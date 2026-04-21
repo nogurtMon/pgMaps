@@ -2,7 +2,8 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-An open-source geospatial interface for PostGIS:
+An open-source interface for PostGIS-enabled PostgreSQL databases:
+
 - Import anything
 - Visualize large datasets
 - Share live maps* with anyone
