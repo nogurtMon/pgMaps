@@ -4,8 +4,8 @@
 
 A web interface for PostGIS databases:
 
+- Visualize large spatial datasets
 - Import anything (Shapefile, GeoJSON, CSV, ArcGIS Feature Servers, etc.)
-- Visualize large spatial datasets without lag
 - Share live maps
 
 Connect to any PostGIS database and manage your spatial data directly from the browser.
