@@ -383,20 +383,37 @@ async function parseCSV(file: File): Promise<ParsedLayer[]> {
     ...(wktCol ? [wktCol] : []),
   ]);
 
-  const sampleFeatures = rowsToFeatures(sampleRows, latCol, lonCol, wktCol, skipCols);
+  let effectiveWktCol = wktCol;
+  let sampleFeatures = rowsToFeatures(sampleRows, latCol, lonCol, effectiveWktCol, skipCols);
+
+  // Fall back to lat/lon if WKT can't produce a specific geometry type
+  if (effectiveWktCol && latCol && lonCol) {
+    const wktGeomType = sampleFeatures.length > 0 ? detectGeomType(sampleFeatures) : "Geometry";
+    if (wktGeomType === "Geometry") {
+      effectiveWktCol = null;
+      sampleFeatures = rowsToFeatures(sampleRows, latCol, lonCol, null, skipCols);
+    }
+  }
+
+  // Always exclude all detected geometry columns from imported attributes
+  const effectiveSkipCols = new Set<string>([
+    ...(latCol ? [latCol] : []),
+    ...(lonCol ? [lonCol] : []),
+    ...(wktCol ? [wktCol] : []),
+  ]);
 
   const name = file.name.replace(/\.[^.]+$/, "");
   return [{
     name,
     features: sampleFeatures,
-    geometryType: wktCol ? (sampleFeatures.length > 0 ? detectGeomType(sampleFeatures) : "Geometry") : "Point",
+    geometryType: effectiveWktCol ? (sampleFeatures.length > 0 ? detectGeomType(sampleFeatures) : "Geometry") : "Point",
     srid: 4326,
     rawFile: file,
     latCol,
     lonCol,
-    wktCol,
-    skipCols,
-    totalRows: undefined, // will be determined during import
+    wktCol: effectiveWktCol,
+    skipCols: effectiveSkipCols,
+    totalRows: undefined,
   }];
 }
 
