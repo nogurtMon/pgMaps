@@ -2,7 +2,7 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-A Web Interface for PostGIS Databases:
+A web interface for PostGIS databases:
 
 - Import anything (Shapefile, GeoJSON, CSV, ArcGIS Feature Servers, etc.)
 - Visualize large spatial datasets without lag
