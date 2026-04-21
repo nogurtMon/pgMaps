@@ -244,8 +244,12 @@ export function SavedViewsDialog({ open, onOpenChange, connectionId, layers, bas
                             {v.name}
                             {isActive && <span className="ml-1.5 text-[10px] font-normal text-primary/70">active</span>}
                           </button>
-                          <p className="text-[10px] text-muted-foreground">
-                            {v.state_json.layers.length} {v.state_json.layers.length === 1 ? "layer" : "layers"} · {fmtDate(v.created_at)}
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            {v.is_public
+                              ? <span className="text-green-600 dark:text-green-400 font-medium">Public</span>
+                              : <span>Private</span>
+                            }
+                            <span>· {v.state_json.layers.length} {v.state_json.layers.length === 1 ? "layer" : "layers"} · {fmtDate(v.created_at)}</span>
                           </p>
                         </>
                       )}

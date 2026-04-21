@@ -2,8 +2,13 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-A self-hosted geospatial interface for PostGIS. Connect to any PostGIS database and manage your spatial data directly from the browser.
+An open-source geospatial interface for PostGIS:
+- Import anything
+- Visualize large datasets
+- Share live maps* with anyone
+* Live maps are updated everytime your database is.
 
+Connect to any PostGIS database and manage your spatial data directly from the browser.
 Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
 
 Style and filter your data; create custom maps; and share maps as public read-only links. Read-only maps are updated everytime your PostGIS is.

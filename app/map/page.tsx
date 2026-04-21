@@ -10,10 +10,12 @@ import type { TableRow, MapLayer } from "@/lib/types";
 import type { ZoomTarget, MapView } from "@/components/maplibre-map";
 
 import { Button } from "@/components/ui/button";
-import { Map, Database } from "lucide-react";
+import { Map, Database, Github, Bug } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { SavedViewsDialog } from "@/components/saved-views-dialog";
 import { BASEMAP_OPTIONS } from "@/lib/types";
+import { ImportTasksProvider } from "@/lib/import-tasks-context";
+import { Toaster } from "@/components/toaster";
 
 const LAYERS_KEY = "postgis-layers";
 const CONN_LS_KEY = "pg_connection_id";
@@ -140,6 +142,8 @@ export default function Home() {
   }
 
   return (
+    <ImportTasksProvider>
+    <Toaster />
     <div className="h-screen overflow-hidden grid grid-rows-[auto_1fr]">
       <header className="bg-background border-b px-3 py-1 flex items-center gap-3 text-[11px] font-mono shrink-0">
         <span className="flex items-center gap-1.5 font-bold tracking-widest text-primary uppercase text-xs shrink-0">
@@ -159,8 +163,18 @@ export default function Home() {
           }
         </button>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <ModeToggle />
+          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="Report a bug">
+            <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=bug_report.md" target="_blank" rel="noopener noreferrer">
+              <Bug className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="View on GitHub">
+            <a href="https://github.com/nogurtMon/postgis-frontend" target="_blank" rel="noopener noreferrer">
+              <Github className="h-3.5 w-3.5" />
+            </a>
+          </Button>
           <Button size="icon" variant="ghost" className="h-6 w-6 relative" onClick={() => setSettingsOpen(true)} title="Database connections">
             <Database className="h-3.5 w-3.5" />
             <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-background ${!loaded ? "bg-muted-foreground/40" : connectionId ? "bg-green-500" : "bg-red-500"}`} />
@@ -250,5 +264,6 @@ export default function Home() {
         }}
       />
     </div>
+    </ImportTasksProvider>
   );
 }

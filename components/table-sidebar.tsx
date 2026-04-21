@@ -3,6 +3,7 @@ import React from "react";
 import type { TableRow, MapLayer, LayerControl, AttrOperator, FillColorRule, TemporalMode } from "@/lib/types";
 import { BASEMAP_OPTIONS } from "@/lib/types";
 import { CreateTableDialog } from "@/components/create-table-dialog";
+import { ImportTasksPanel } from "@/components/import-tasks-panel";
 import { DeleteTableDialog } from "@/components/delete-table-dialog";
 import { RenameTableDialog } from "@/components/rename-table-dialog";
 import { AttributeTableDialog } from "@/components/attribute-table-dialog";
@@ -19,7 +20,7 @@ import {
 import {
   ChevronDown, ChevronRight, Eye, EyeOff, X, Plus,
   Check, MapPin, TriangleAlert, Maximize2, Folder, GripVertical, Table2, Globe, Lock,
-  Calendar, Hash, List, Filter, Paintbrush, Sliders, Tag,
+  Calendar, Hash, List, Filter, Paintbrush, Sliders, Tag, PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
 interface Props {
@@ -1314,6 +1315,7 @@ export function TableSidebar({
   activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings,
   basemap, onBasemapChange,
 }: Props) {
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [tab, setTab] = React.useState("browser");
   const [tables, setTables] = React.useState<TableRow[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -1505,28 +1507,39 @@ export function TableSidebar({
   }
 
   return (
-    <aside className="w-84 shrink-0 border-r flex flex-col overflow-hidden bg-muted/30">
+    <aside className={`${sidebarCollapsed ? "w-8" : "w-84"} transition-[width] duration-200 shrink-0 border-r flex flex-col overflow-hidden bg-muted/30`}>
       {/* Tab bar */}
       <div className="flex shrink-0 border-b bg-muted/50">
+        {!sidebarCollapsed && (
+          <>
+            <button
+              onClick={() => setTab("browser")}
+              className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === "browser" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Browser
+            </button>
+            <button
+              onClick={() => setTab("layers")}
+              className={`flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${tab === "layers" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Layers
+              {layers.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px]">{layers.length}</Badge>
+              )}
+            </button>
+          </>
+        )}
         <button
-          onClick={() => setTab("browser")}
-          className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === "browser" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          className="shrink-0 p-2 text-muted-foreground hover:text-foreground transition-colors"
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          Browser
-        </button>
-        <button
-          onClick={() => setTab("layers")}
-          className={`flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${tab === "layers" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          Layers
-          {layers.length > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{layers.length}</Badge>
-          )}
+          {sidebarCollapsed ? <PanelLeft className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
         </button>
       </div>
 
       {/* BROWSER TAB */}
-      {tab === "browser" && (
+      {!sidebarCollapsed && tab === "browser" && (
         <ScrollArea className="flex-1 min-h-0">
           {/* PostgreSQL root node — always visible */}
           <button
@@ -1546,7 +1559,14 @@ export function TableSidebar({
             <span suppressHydrationWarning className={`w-2 h-2 rounded-full shrink-0 ${connectionId ? "bg-green-500" : "bg-red-400"}`} title={connectionId ? "Connected" : "Not connected"} />
           </button>
 
-          {connectionLoaded && !connectionId && <p className="pl-8 py-2 text-xs text-muted-foreground/60">Right-click to connect…</p>}
+          {connectionLoaded && !connectionId && (
+            <div className="mx-3 mt-6 mb-2 flex flex-col items-center gap-3 text-center">
+              <p className="text-xs text-muted-foreground">Connect a PostGIS database to browse tables and build maps.</p>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenSettings?.()}>
+                Connect database
+              </Button>
+            </div>
+          )}
           {loading && <p className="pl-8 py-1.5 text-xs text-muted-foreground">Loading…</p>}
           {error && (() => { const { title, detail } = friendlyConnError(error); return (
             <div className="mx-3 my-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-0.5">
@@ -1564,6 +1584,14 @@ export function TableSidebar({
 
           {connectionId && !loading && !error && (
             <>
+              {connectionOpen && schemas.size === 0 && !postgisRequired && (
+                <div className="mx-3 mt-6 mb-2 flex flex-col items-center gap-3 text-center">
+                  <p className="text-xs text-muted-foreground">No spatial tables found. Import a file or create a table with a geometry column to get started.</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCreateOpen(true)}>
+                    Import data
+                  </Button>
+                </div>
+              )}
 
               {connectionOpen && [...schemas.entries()].map(([schema, schemaTables]) => {
                 const isCollapsed = collapsed.has(schema);
@@ -1841,7 +1869,7 @@ export function TableSidebar({
       )}
 
       {/* LAYERS TAB */}
-      {tab === "layers" && (
+      {!sidebarCollapsed && tab === "layers" && (
         <ScrollArea className="flex-1 min-h-0">
           {layers.length === 0 && !basemap && (
             <div className="p-4 space-y-1">
@@ -1958,6 +1986,7 @@ export function TableSidebar({
           })()}
         </ScrollArea>
       )}
+      {!sidebarCollapsed && <ImportTasksPanel onRefresh={() => setRefreshKey((k) => k + 1)} />}
       <CreateTableDialog
         open={createOpen}
         onOpenChange={setCreateOpen}

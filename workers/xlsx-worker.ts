@@ -4,7 +4,7 @@ import { findCol, rowsToFeatures, LAT_COLS, LON_COLS, WKT_COLS } from "@/lib/geo
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const XLSX: any = (XLSXmod as any).default ?? XLSXmod;
 
-const CHUNK = 500;
+const CHUNK = 2000;
 
 export type WorkerIn =
   | { type: "preview"; buffer: ArrayBuffer }
@@ -21,24 +21,30 @@ export type WorkerOut =
 // Full XLSX parse runs here in the worker so the main thread stays responsive.
 function handlePreview(buffer: ArrayBuffer) {
   try {
-    const wb = XLSX.read(buffer, { type: "array", sheetRows: 2 });
-    const wbFull = XLSX.read(buffer, { type: "array", bookSheets: true });
-    // bookSheets only gives us names; use a separate minimal read per sheet to get row count
-    // by reading the full workbook but only requesting the dimension metadata
-    const wbDims = XLSX.read(buffer, { type: "array", cellFormula: false, cellHTML: false, cellNF: false, cellText: false, cellDates: false, sheetStubs: false });
+    // Single parse with minimal cell allocation — no formula/HTML/NF/text/date objects allocated.
+    // This gives us sheet names, full !ref for row counts, and cell values for the header row.
+    const wb = XLSX.read(buffer, {
+      type: "array",
+      cellFormula: false, cellHTML: false, cellNF: false, cellText: false,
+      cellDates: false, sheetStubs: false,
+    });
 
     const sheets = wb.SheetNames.map((name: string) => {
       const ws = wb.Sheets[name];
-      const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      const headers: string[] = (rows[0] ?? []).map(String);
+      const ref = ws?.["!ref"];
+      const totalRows = ref ? Math.max(0, XLSX.utils.decode_range(ref).e.r) : 0;
+
+      // Extract header row only (row index 0)
+      const headerRange = ref
+        ? XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: XLSX.utils.decode_range(ref).e.c } })
+        : undefined;
+      const headerRows: string[][] = XLSX.utils.sheet_to_json(ws, {
+        header: 1, defval: "", range: headerRange,
+      });
+      const headers: string[] = (headerRows[0] ?? []).map(String);
       const latCol = findCol(headers, LAT_COLS);
       const lonCol = findCol(headers, LON_COLS);
       const wktCol = findCol(headers, WKT_COLS);
-
-      // True row count from the dims-only parse (no cell values allocated)
-      const dimWs = wbDims.Sheets[name];
-      const ref = dimWs?.["!ref"];
-      const totalRows = ref ? Math.max(0, XLSX.utils.decode_range(ref).e.r) : 0;
 
       return { name, headers, latCol, lonCol, wktCol, totalRows };
     });

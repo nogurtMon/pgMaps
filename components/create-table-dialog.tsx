@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { findCol, rowsToFeatures, LAT_COLS, LON_COLS, WKT_COLS } from "@/lib/geo-parse-utils";
 import type { WorkerIn, WorkerOut } from "@/workers/xlsx-worker";
+import { useImportTasks } from "@/lib/import-tasks-context";
+import { toast } from "@/lib/toast";
 
 // ─── ArcGIS helpers ───────────────────────────────────────────────────────────
 
@@ -581,9 +583,133 @@ interface Props {
   defaultSchema?: string;
 }
 
+// ─── standalone arc import loop (no component state — survives dialog unmount) ─
+
+interface ArcImportLoopParams {
+  taskId: string;
+  meta: ArcGISMeta;
+  includedCols: ColMapping[];
+  schema: string;
+  table: string;
+  url: string;
+  connId: string;
+  outFields: string;
+  layerUrl: string;
+  startOffset: number;
+  updateTask: (id: string, patch: any) => void;
+  registerCancel: (id: string, fn: () => void) => void;
+  registerResume: (id: string, fn: () => void) => void;
+  onCreated: () => void;
+}
+
+async function runArcImportLoop(p: ArcImportLoopParams) {
+  const { taskId, meta, includedCols, schema, table, url, connId, outFields, layerUrl, updateTask, registerCancel, registerResume, onCreated } = p;
+
+  if (p.startOffset === 0) {
+    const createRes = await fetch("/api/pg/create-table", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId: connId, schema, table, geomType: mapGeomType(meta.geometryType), srid: 4326, columns: includedCols.map((c) => ({ name: c.pgName, type: c.type })), timestamps: false }),
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok) { updateTask(taskId, { phase: "error", error: createData.error ?? "Failed to create table" }); return; }
+  }
+
+  const importAbort = new AbortController();
+  registerCancel(taskId, () => { importAbort.abort(); updateTask(taskId, { phase: "cancelling" }); });
+
+  const basePayload = {
+    connectionId: connId, schema, table, layerUrl,
+    whereClause: extractWhereClause(url), outFields,
+    columns: includedCols.map((c) => ({ origName: c.origName, pgName: c.pgName, type: c.type })),
+    batchSize: Math.min(meta.maxRecordCount, meta.geometryType === "esriGeometryPoint" || meta.geometryType === "esriGeometryMultipoint" ? 2000 : 500),
+  };
+
+  // Mutable box for resume offset — captured in resume closure
+  const resumeBox = { offset: p.startOffset };
+  registerResume(taskId, () => runArcImportLoop({ ...p, startOffset: resumeBox.offset }));
+
+  let chunkOffset = p.startOffset;
+  let latestDone = p.startOffset;
+  let latestTotal = meta.count;
+
+  while (true) {
+    if (importAbort.signal.aborted) { updateTask(taskId, { phase: "cancelled" }); return; }
+
+    let res: Response;
+    try {
+      res = await fetch("/api/pg/import-arcgis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...basePayload, startOffset: chunkOffset }),
+        signal: importAbort.signal,
+      });
+    } catch (e: any) {
+      if (e.name === "AbortError") { updateTask(taskId, { phase: "cancelled" }); return; }
+      updateTask(taskId, { phase: "error", error: e.message ?? "Import failed" }); return;
+    }
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      updateTask(taskId, { phase: "error", error: d.error ?? "Import failed" }); return;
+    }
+
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let chunkDone = false;
+    try {
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let msg: any;
+          try { msg = JSON.parse(line); } catch { continue; }
+          if (msg.type === "progress") {
+            latestDone = msg.done; latestTotal = msg.total;
+            updateTask(taskId, { done: msg.done, total: msg.total });
+            if (msg.nextOffset != null) resumeBox.offset = msg.nextOffset;
+          } else if (msg.type === "checkpoint") {
+            latestDone = msg.done; latestTotal = msg.total;
+            updateTask(taskId, { done: msg.done, total: msg.total });
+            chunkOffset = msg.nextOffset;
+            resumeBox.offset = msg.nextOffset;
+            chunkDone = true;
+            break outer;
+          } else if (msg.type === "done") {
+            updateTask(taskId, { phase: "done", done: msg.done });
+            onCreated();
+            return;
+          } else if (msg.type === "error") {
+            updateTask(taskId, { phase: "error", error: msg.message ?? "Import failed" });
+            return;
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.name === "AbortError") { updateTask(taskId, { phase: "cancelled" }); return; }
+      if (latestTotal > 0 && latestDone >= latestTotal) { updateTask(taskId, { phase: "done", done: latestDone }); onCreated(); }
+      else { updateTask(taskId, { phase: "interrupted", resumeOffset: resumeBox.offset }); }
+      return;
+    }
+
+    if (!chunkDone) {
+      if (latestTotal > 0 && latestDone >= latestTotal) { updateTask(taskId, { phase: "done", done: latestDone }); onCreated(); }
+      else { updateTask(taskId, { phase: "interrupted", resumeOffset: resumeBox.offset }); }
+      return;
+    }
+  }
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated, defaultSchema }: Props) {
+  const { addTask, updateTask, registerCancel, registerResume } = useImportTasks();
+  const currentTaskIdRef = React.useRef<string | null>(null);
   const [activeTab, setActiveTab] = React.useState("arcgis");
 
   // ── ArcGIS state ──────────────────────────────────────────────────────────
@@ -597,9 +723,6 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
   const [arcError, setArcError] = React.useState("");
   const [arcServiceLayers, setArcServiceLayers] = React.useState<{ id: number; name: string }[] | null>(null);
   const [arcSelectedLayerId, setArcSelectedLayerId] = React.useState<string>("");
-  const abortRef = React.useRef(false);
-  const arcStartTimeRef = React.useRef(0);
-  const arcNextOffsetRef = React.useRef(0);
 
   // ── File import state ─────────────────────────────────────────────────────
   const [filePhase, setFilePhase] = React.useState<FilePhase>("idle");
@@ -618,8 +741,6 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
     setArcSchema(defaultSchema ?? "public"); setArcTable("");
     setArcProgress({ done: 0, total: 0 }); setArcError("");
     setArcServiceLayers(null); setArcSelectedLayerId("");
-    arcNextOffsetRef.current = 0;
-    abortRef.current = false;
     setFilePhase("idle"); setFileLayers([]); setFileSelectedIdx(0); setFileColMappings([]);
     setFileSchema(defaultSchema ?? "public"); setFileTable("");
     setFileProgress({ done: 0, total: 0 }); setFileError("");
@@ -691,140 +812,45 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
 
   async function startArcImport(startOffset = 0) {
     if (!arcMeta) return;
-    abortRef.current = false;
-    arcStartTimeRef.current = Date.now();
-    arcNextOffsetRef.current = startOffset;
-    setArcPhase("importing");
-    if (startOffset === 0) setArcProgress({ done: 0, total: arcMeta.count });
-    // Local tracking so we can read latest values without state updater callbacks
-    let latestDone = startOffset;
-    let latestTotal = arcMeta.count;
 
+    // Snapshot all component state now — the loop uses only these locals so it
+    // survives dialog close/unmount without referencing stale React state.
+    const meta = arcMeta;
     const includedCols = arcColMappings.filter((c) => c.include);
+    const schema = arcSchema;
+    const table = arcTable;
+    const url = arcUrl;
+    const connId = connectionId;
     const outFields = includedCols.map((c) => c.origName).join(",") || "*";
+    const layerUrl = normalizeLayerUrl(url);
 
-    // Only create the table on a fresh import, not a resume
+    setArcPhase("importing");
+    if (startOffset === 0) setArcProgress({ done: 0, total: meta.count });
+
+    const taskId = startOffset === 0 ? crypto.randomUUID() : (currentTaskIdRef.current ?? crypto.randomUUID());
+    currentTaskIdRef.current = taskId;
+
     if (startOffset === 0) {
-      const createRes = await fetch("/api/pg/create-table", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionId, schema: arcSchema, table: arcTable, geomType: mapGeomType(arcMeta.geometryType), srid: 4326, columns: includedCols.map((c) => ({ name: c.pgName, type: c.type })), timestamps: false }),
+      addTask({
+        id: taskId, type: "arcgis", label: meta.name || table,
+        schema, table, connectionId: connId,
+        phase: "importing", done: 0, total: meta.count,
+        startedAt: Date.now(),
       });
-      const createData = await createRes.json();
-      if (!createRes.ok) { setArcError(createData.error ?? "Failed to create table"); setArcPhase("error"); return; }
+    } else {
+      updateTask(taskId, { phase: "importing", resumeOffset: undefined });
     }
 
-    // Server-side import: ArcGIS → server → Postgres, streamed NDJSON progress
-    const layerUrl = normalizeLayerUrl(arcUrl);
-    const importAbort = new AbortController();
-    (abortRef as any).cancel = () => importAbort.abort();
+    onOpenChange(false);
+    toast("Import started — track progress in the sidebar");
 
-    const basePayload = {
-      connectionId,
-      schema: arcSchema,
-      table: arcTable,
-      layerUrl,
-      whereClause: extractWhereClause(arcUrl),
-      outFields,
-      columns: includedCols.map((c) => ({ origName: c.origName, pgName: c.pgName, type: c.type })),
-      batchSize: Math.min(arcMeta.maxRecordCount, arcMeta.geometryType === "esriGeometryPoint" || arcMeta.geometryType === "esriGeometryMultipoint" ? 2000 : 500),
-    };
-
-    // Loop over server chunks — each call processes maxBatches fetch-insert cycles,
-    // then sends a "checkpoint" so we start a new call rather than timeout.
-    let chunkOffset = startOffset;
-    while (true) {
-      if (importAbort.signal.aborted) { setArcPhase("cancelled"); return; }
-
-      let res: Response;
-      try {
-        res = await fetch("/api/pg/import-arcgis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...basePayload, startOffset: chunkOffset }),
-          signal: importAbort.signal,
-        });
-      } catch (e: any) {
-        if (e.name === "AbortError") { setArcPhase("cancelled"); return; }
-        setArcError(e.message ?? "Import failed"); setArcPhase("error"); return;
-      }
-
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setArcError(d.error ?? "Import failed"); setArcPhase("error"); return;
-      }
-
-      // Read NDJSON stream for this chunk
-      const reader = res.body!.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      let chunkDone = false;
-      try {
-        outer: while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            let msg: any;
-            try { msg = JSON.parse(line); } catch { continue; }
-            if (msg.type === "progress") {
-              latestDone = msg.done; latestTotal = msg.total;
-              setArcProgress({ done: msg.done, total: msg.total });
-              if (msg.nextOffset != null) arcNextOffsetRef.current = msg.nextOffset;
-            } else if (msg.type === "checkpoint") {
-              // Server finished its chunk — continue from nextOffset automatically
-              latestDone = msg.done; latestTotal = msg.total;
-              setArcProgress({ done: msg.done, total: msg.total });
-              chunkOffset = msg.nextOffset;
-              chunkDone = true;
-              break outer;
-            } else if (msg.type === "done") {
-              setArcProgress((p) => ({ ...p, done: msg.done }));
-              setArcPhase("done");
-              onCreated();
-              return;
-            } else if (msg.type === "error") {
-              setArcError(msg.message ?? "Import failed");
-              setArcPhase("error");
-              return;
-            }
-          }
-        }
-      } catch (e: any) {
-        if (e.name === "AbortError") { setArcPhase("cancelled"); return; }
-        if (latestTotal > 0 && latestDone >= latestTotal) { setArcPhase("done"); onCreated(); }
-        else { setArcPhase("interrupted"); }
-        return;
-      }
-
-      // Stream closed without checkpoint or done — check if we finished anyway
-      if (!chunkDone) {
-        if (latestTotal > 0 && latestDone >= latestTotal) { setArcPhase("done"); onCreated(); }
-        else { setArcPhase("interrupted"); }
-        return;
-      }
-    }
+    await runArcImportLoop({
+      taskId, meta, includedCols, schema, table, url, connId, outFields, layerUrl,
+      startOffset, updateTask, registerCancel, registerResume, onCreated,
+    });
   }
 
-  async function dropArcTable() {
-    await fetch("/api/pg/drop-table", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId, schema: arcSchema, table: arcTable }) });
-    onCreated(); reset(); setArcPhase("idle");
-  }
 
-  const arcPct = arcProgress.total > 0 ? Math.round((arcProgress.done / arcProgress.total) * 100) : null;
-
-  function arcEta(): string {
-    const { done, total } = arcProgress;
-    if (done === 0 || total === 0 || arcStartTimeRef.current === 0) return "";
-    const elapsed = (Date.now() - arcStartTimeRef.current) / 1000;
-    const remaining = (total - done) / (done / elapsed);
-    if (remaining < 5) return "";
-    if (remaining < 60) return ` · ~${Math.round(remaining)}s left`;
-    return ` · ~${Math.ceil(remaining / 60)}m left`;
-  }
 
   // ── File import functions ─────────────────────────────────────────────────
 
@@ -869,13 +895,24 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
     setFilePhase("importing");
     setFileProgress({ done: 0, total: layer.totalRows ?? layer.features.length });
 
+    const taskId = crypto.randomUUID();
+    currentTaskIdRef.current = taskId;
+    addTask({
+      id: taskId, type: "file", label: layer.name,
+      schema: fileSchema, table: fileTable, connectionId,
+      phase: "importing", done: 0, total: layer.totalRows ?? layer.features.length,
+      startedAt: Date.now(),
+    });
+    onOpenChange(false);
+    toast("Import started — track progress in the sidebar");
+
     const includedCols = fileColMappings.filter((c) => c.include);
     const createRes = await fetch("/api/pg/create-table", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectionId, schema: fileSchema, table: fileTable, geomType: layer.geometryType, srid: layer.srid, columns: includedCols.map((c) => ({ name: c.pgName, type: c.type })), timestamps: false }),
     });
     const createData = await createRes.json();
-    if (!createRes.ok) { setFileError(createData.error ?? "Failed to create table"); setFilePhase("error"); return; }
+    if (!createRes.ok) { updateTask(taskId, { phase: "error", error: createData.error ?? "Failed to create table" }); return; }
 
     // Helper: send one batch to the DB
     async function sendBatch(features: any[]): Promise<string | null> {
@@ -927,7 +964,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
     if (layer.rawFile) {
       // ── Streaming path: CSV / XLSX (large files — never hold all rows in memory) ──
       const { rawFile, latCol = null, lonCol = null, wktCol = null, skipCols = new Set() } = layer;
-      const CHUNK = 500;
+      const CHUNK = 2000;
 
       if (rawFile.name.toLowerCase().endsWith(".csv")) {
         // True streaming: file.stream() yields to browser on every OS read — never loads full file
@@ -943,7 +980,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           const err = await sendBatch(features);
           done += rowBuf.length;
           rowBuf = [];
-          setFileProgress({ done, total: done }); // total unknown until end
+          updateTask(taskId, { done, total: done }); // total unknown until end
           return err;
         };
 
@@ -959,14 +996,13 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           rowBuf.push(buildCsvRow(headers, vals, wktColIdxStream));
           if (rowBuf.length >= CHUNK) {
             const err = await flush();
-            if (err) { setFileError(err); setFilePhase("error"); return; }
+            if (err) { updateTask(taskId, { phase: "error", error: err }); return; }
           }
         }
         const err = await flush();
-        if (err) { setFileError(err); setFilePhase("error"); return; }
+        if (err) { updateTask(taskId, { phase: "error", error: err }); return; }
         if (totalSkipped > 0 && done - totalSkipped === 0) {
-          setFileError(`No valid geometries found — all ${totalSkipped} rows were skipped. Check that the geometry column contains valid WKT (e.g. POLYGON ((x y, ...))) and is quoted in the CSV if it contains commas.`);
-          setFilePhase("error");
+          updateTask(taskId, { phase: "error", error: `No valid geometries found — all ${totalSkipped} rows were skipped. Check that the geometry column contains valid WKT (e.g. POLYGON ((x y, ...))) and is quoted in the CSV if it contains commas.` });
           return;
         }
       } else {
@@ -976,19 +1012,43 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
         const buffer = await rawFile.arrayBuffer();
         let importError: string | null = null;
         await new Promise<void>((resolve, reject) => {
+          // Pipeline depth: start next DB insert before previous one finishes.
+          // Worker parses next chunk while current chunk is being inserted.
+          const PIPELINE = 2;
+          let inFlight = 0;
+          let workerWaiting = false;
+          let failed = false;
+          const insertPromises: Promise<void>[] = [];
+
+          function tryAck() {
+            if (workerWaiting && !failed && inFlight < PIPELINE) {
+              workerWaiting = false;
+              worker.postMessage({ type: "next" } satisfies WorkerIn);
+            }
+          }
+
           const worker = new Worker(new URL("../workers/xlsx-worker.ts", import.meta.url));
           worker.onmessage = (e: MessageEvent<WorkerOut>) => {
             const msg = e.data;
             if (msg.type === "error") { worker.terminate(); reject(new Error(msg.message)); return; }
-            if (msg.type === "done") { worker.terminate(); resolve(); return; }
+            if (msg.type === "done") {
+              Promise.all(insertPromises)
+                .then(() => { worker.terminate(); resolve(); })
+                .catch(() => {});
+              return;
+            }
             if (msg.type === "chunk") {
-              // Process synchronously in the ack callback to maintain back-pressure
-              sendBatch(msg.features).then((err) => {
-                if (err) { worker.terminate(); reject(new Error(err)); return; }
-                setFileProgress({ done: msg.done, total: msg.total });
-                // Ack: tell worker to send the next chunk
-                worker.postMessage({ type: "next" } satisfies WorkerIn);
+              if (failed) return;
+              inFlight++;
+              workerWaiting = true;
+              tryAck(); // ack early if pipeline has room — worker parses next chunk in parallel
+              const p = sendBatch(msg.features).then((err) => {
+                inFlight--;
+                if (err) { failed = true; worker.terminate(); reject(new Error(err)); return; }
+                updateTask(taskId, { done: msg.done, total: msg.total });
+                tryAck(); // ack now if pipeline was full and worker was waiting
               });
+              insertPromises.push(p);
             }
           };
           worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message)); };
@@ -1002,7 +1062,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
             skipCols: [...skipCols],
           } satisfies WorkerIn, [buffer]);
         }).catch((err: Error) => { importError = err.message; });
-        if (importError) { setFileError(importError); setFilePhase("error"); return; }
+        if (importError) { updateTask(taskId, { phase: "error", error: importError }); return; }
       }
     } else {
       // ── Standard path: GeoJSON / KML / GPKG / SHP (all features already in memory) ──
@@ -1021,26 +1081,21 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           payloadBytes += geomBytes;
         }
         const err = await sendBatch(batch);
-        if (err) { setFileError(err); setFilePhase("error"); return; }
+        if (err) { updateTask(taskId, { phase: "error", error: err }); return; }
         i = j;
-        setFileProgress({ done: i, total: layer.features.length });
+        updateTask(taskId, { done: i, total: layer.features.length });
         await new Promise((r) => setTimeout(r, 0));
       }
     }
 
-    setFilePhase("done");
+    updateTask(taskId, { phase: "done" });
     onCreated();
   }
-
-  const filePct = fileProgress.total > 0 ? Math.round((fileProgress.done / fileProgress.total) * 100) : null;
 
   // ─── render ───────────────────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={(v) => {
-      if (arcPhase === "importing" || arcPhase === "cancelling" || filePhase === "importing") return;
-      onOpenChange(v);
-    }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import Table</DialogTitle>
@@ -1129,50 +1184,11 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                 <ColMappingTable mappings={arcColMappings} onChange={setArcColMappings} />
               )}
 
-              {(arcPhase === "importing" || arcPhase === "cancelling") && (
-                <>
-                  <ProgressBar pct={arcPct} label={arcPhase === "cancelling" ? "Cancelling…" : "Importing…"}
-                    detail={`${arcProgress.done.toLocaleString()}${arcProgress.total > 0 ? ` / ${arcProgress.total.toLocaleString()}` : ""} features${arcEta()}`} />
-                  <p className="text-xs text-muted-foreground text-center">
-                    You can switch tabs — do not close or refresh this browser tab.
-                  </p>
-                </>
-              )}
-
-              {arcPhase === "cancelled" && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 space-y-2">
-                  <p className="text-sm font-medium">Import cancelled</p>
-                  <p className="text-xs text-muted-foreground">{arcProgress.done.toLocaleString()} of {arcProgress.total.toLocaleString()} features imported into <span className="font-mono">{arcSchema}.{arcTable}</span>.</p>
-                </div>
-              )}
-
-              {arcPhase === "interrupted" && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 space-y-2">
-                  <p className="text-sm font-medium">Connection interrupted</p>
-                  <p className="text-xs text-muted-foreground">
-                    {arcProgress.done.toLocaleString()} of {arcProgress.total.toLocaleString()} features were imported before the connection was lost (likely a server timeout).
-                    You can resume from where it left off.
-                  </p>
-                </div>
-              )}
-              {arcPhase === "done" && <p className="text-sm text-green-600 dark:text-green-400">Import complete — {arcProgress.done.toLocaleString()} features added to <span className="font-mono">{arcSchema}.{arcTable}</span>.</p>}
               {arcPhase === "error" && arcError && <p className="text-sm text-destructive break-words">{arcError}</p>}
 
               <div className="flex justify-end gap-2">
-                {arcPhase === "importing" && (
-                  <Button variant="outline" onClick={() => { (abortRef as any).cancel?.(); setArcPhase("cancelling"); }}>Cancel import</Button>
-                )}
-                {arcPhase === "cancelled" && (
-                  <><Button variant="destructive" onClick={dropArcTable}>Drop table</Button>
-                  <Button onClick={() => { onCreated(); onOpenChange(false); }}>Keep partial data</Button></>
-                )}
-                {arcPhase === "interrupted" && (
-                  <><Button variant="destructive" onClick={dropArcTable}>Drop table</Button>
-                  <Button variant="outline" onClick={() => { onCreated(); onOpenChange(false); }}>Keep partial data</Button>
-                  <Button onClick={() => startArcImport(arcNextOffsetRef.current)}>Resume</Button></>
-                )}
-                {(arcPhase === "idle" || arcPhase === "loading-meta" || arcPhase === "ready" || arcPhase === "done" || arcPhase === "error") && (
-                  <Button variant="outline" onClick={() => onOpenChange(false)}>{arcPhase === "done" ? "Close" : "Cancel"}</Button>
+                {(arcPhase === "idle" || arcPhase === "loading-meta" || arcPhase === "ready" || arcPhase === "error") && (
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 )}
                 {arcPhase === "ready" && (
                   <Button onClick={() => startArcImport()}
@@ -1262,19 +1278,11 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                 <ColMappingTable mappings={fileColMappings} onChange={setFileColMappings} />
               )}
 
-              {filePhase === "importing" && (
-                <ProgressBar pct={filePct} label="Importing…"
-                  detail={fileProgress.total > fileProgress.done
-                    ? `${fileProgress.done.toLocaleString()} / ${fileProgress.total.toLocaleString()} rows`
-                    : `${fileProgress.done.toLocaleString()} rows`} />
-              )}
-
-              {filePhase === "done" && <p className="text-sm text-green-600 dark:text-green-400">Import complete — {fileProgress.done.toLocaleString()} features added to <span className="font-mono">{fileSchema}.{fileTable}</span>.</p>}
               {filePhase === "error" && fileError && <p className="text-sm text-destructive break-words">{fileError}</p>}
 
               <div className="flex justify-end gap-2">
-                {filePhase !== "importing" && (
-                  <Button variant="outline" onClick={() => onOpenChange(false)}>{filePhase === "done" ? "Close" : "Cancel"}</Button>
+                {(filePhase === "idle" || filePhase === "parsing" || filePhase === "ready" || filePhase === "error") && (
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 )}
                 {filePhase === "ready" && (() => {
                   const hasInvalid = fileColMappings.some((c) => c.include && !VALID_IDENT_RE.test(c.pgName));
@@ -1342,16 +1350,3 @@ function ColMappingTable({ mappings, onChange }: { mappings: ColMapping[]; onCha
   );
 }
 
-function ProgressBar({ pct, label, detail }: { pct: number | null; label: string; detail: string }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{label}</span><span>{detail}</span>
-      </div>
-      <div className="h-2 rounded-full bg-muted overflow-hidden">
-        <div className="h-full bg-primary transition-all duration-300" style={{ width: pct != null ? `${pct}%` : "100%" }} />
-      </div>
-      {pct != null && <p className="text-xs text-center text-muted-foreground">{pct}%</p>}
-    </div>
-  );
-}
