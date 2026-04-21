@@ -4,7 +4,8 @@
 
 **An open-source web interface for PostGIS databases**. Import spatial data into PostGIS, visualize it on a map and share it with anyone. Runs locally or self-hosted.
 
-- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX) into PostGIS
+- Connect to any PostGIS database directly from the browser
+- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
 - Visualize large spatial datasets
 - Share live maps with anyone
 
@@ -14,7 +15,7 @@
 - **Visualize** — render points, lines, and polygons as vector tile layers on an interactive map
 - **Style** — per-layer fill, stroke, opacity, radius; categorical, threshold, and numeric color rules
 - **Filter** — attribute, temporal, numeric range, and categorical controls; filters are applied server-side at tile query time
-- **Share** — generate public read-only share links that embed your layers, styles, and active filters; viewers get an interactive panel to toggle visibility, filter by category or time, zoom to features, and view attribute tables — no login required
+- **Share** — generate public read-only share links that embed your layers, styles, and active filters into an interactive view of your GIS data
 - **Attribute table** — browse, search, sort, and filter any layer's data; zoom the map directly to any individual feature
 - **Table management** — create spatial indexes, assign SRIDs, add primary keys, cast geometry types, and cluster tables for improved tile performance
 
