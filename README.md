@@ -47,28 +47,6 @@ No `DSN_ENCRYPTION_KEY` needed — a key is auto-generated locally.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nogurtMon/postgis-frontend&env=DSN_ENCRYPTION_KEY,APP_PASSWORD,POSTGRES_URL&envDescription=DSN_ENCRYPTION_KEY%3A%20run%20%60node%20-e%20%22console.log(require('crypto').randomBytes(32).toString('hex'))%22%60%20to%20generate.%20APP_PASSWORD%3A%20password%20to%20access%20the%20app.%20POSTGRES_URL%3A%20Postgres%20connection%20string%20for%20app%20storage%20%E2%80%94%20create%20a%20free%20database%20at%20neon.tech.&envLink=https://github.com/nogurtMon/postgis-frontend%23environment-variables)
 
-Fill in all three env vars when prompted. Add a custom domain in your Vercel project settings.
-
-**Generate a key:**
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-**Persistent storage:**
-
-The app requires a Postgres database to store saved connections, shared maps, and saved views. Add one before deploying:
-
-1. In your Vercel project dashboard, go to **Storage → Create Database → Postgres (Neon)**
-2. Connect it to your project — Vercel automatically injects `POSTGRES_URL` into your environment
-3. Redeploy
-
-No SQL setup needed. The app automatically creates the following tables on first request:
-
-| Table | Contents |
-|---|---|
-| `_postgis_frontend_connections` | Saved database connections (DSNs encrypted at rest) |
-| `_postgis_frontend_saved_views` | Saved map views (layers, styles, filters, camera position). Rows with `is_public = true` are accessible as public share links. |
-
 ---
 
 ### Docker
@@ -113,7 +91,7 @@ git pull && docker compose down && docker compose up -d --build
 |---|---|---|
 | `DSN_ENCRYPTION_KEY` | Yes (production) | 64 hex chars. Encrypts database connection strings at rest. |
 | `APP_PASSWORD` | Recommended | Password to access the app. Share links at `/share/[id]` remain public regardless. If unset, no auth is required. |
-| `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, shares, saved views). The app creates its tables automatically on first request. On Vercel, injected automatically when you add a Neon Postgres database. |
+| `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |
 
 ---
