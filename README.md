@@ -2,8 +2,9 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-Am open-source web interface for PostGIS databases. Import spatial data, visualize it on an interactive map, and share it with anyone. Runs locally or self-hosted on Docker or Vercel.
+An open-source web interface for PostGIS databases.
 
+Import spatial data, visualize it on an interactive map, and share it with anyone. Runs locally or self-hosted on Docker or Vercel.
 
 - Visualize large spatial datasets
 - Import anything (ArcGIS feature server, gpkg, geojson, kml, shp, csv, xlsx)
