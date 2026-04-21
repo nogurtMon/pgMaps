@@ -696,6 +696,9 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
     arcNextOffsetRef.current = startOffset;
     setArcPhase("importing");
     if (startOffset === 0) setArcProgress({ done: 0, total: arcMeta.count });
+    // Local tracking so we can read latest values without state updater callbacks
+    let latestDone = startOffset;
+    let latestTotal = arcMeta.count;
 
     const includedCols = arcColMappings.filter((c) => c.include);
     const outFields = includedCols.map((c) => c.origName).join(",") || "*";
@@ -768,10 +771,12 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
             let msg: any;
             try { msg = JSON.parse(line); } catch { continue; }
             if (msg.type === "progress") {
+              latestDone = msg.done; latestTotal = msg.total;
               setArcProgress({ done: msg.done, total: msg.total });
               if (msg.nextOffset != null) arcNextOffsetRef.current = msg.nextOffset;
             } else if (msg.type === "checkpoint") {
               // Server finished its chunk — continue from nextOffset automatically
+              latestDone = msg.done; latestTotal = msg.total;
               setArcProgress({ done: msg.done, total: msg.total });
               chunkOffset = msg.nextOffset;
               chunkDone = true;
@@ -790,13 +795,17 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
         }
       } catch (e: any) {
         if (e.name === "AbortError") { setArcPhase("cancelled"); return; }
-        // Unexpected stream error — show interrupted so user can resume manually
-        setArcPhase("interrupted");
+        if (latestTotal > 0 && latestDone >= latestTotal) { setArcPhase("done"); onCreated(); }
+        else { setArcPhase("interrupted"); }
         return;
       }
 
-      // Stream closed without checkpoint or done — genuine timeout/disconnect
-      if (!chunkDone) { setArcPhase("interrupted"); return; }
+      // Stream closed without checkpoint or done — check if we finished anyway
+      if (!chunkDone) {
+        if (latestTotal > 0 && latestDone >= latestTotal) { setArcPhase("done"); onCreated(); }
+        else { setArcPhase("interrupted"); }
+        return;
+      }
     }
   }
 
