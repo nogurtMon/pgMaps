@@ -2,13 +2,13 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-A web interface for PostGIS databases.
+A Web Interface for PostGIS Databases:
 
 - Import anything (Shapefile, GeoJSON, CSV, ArcGIS Feature Servers, etc.)
-- Visualize large datasets without lag
-- Share live maps with anyone
+- Visualize large spatial datasets without lag
+- Share live maps
 
-Connect to any PostGIS-enabled PostgreSQL database and manage your spatial data directly from the browser.
+Connect to any PostGIS database and manage your spatial data directly from the browser.
 
 Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
 
