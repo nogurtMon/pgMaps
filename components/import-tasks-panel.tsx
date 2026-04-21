@@ -120,7 +120,7 @@ function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh(): void }) {
             Drop table
           </Button>
         )}
-        {(task.phase === "cancelled" || task.phase === "error") && (
+        {task.phase === "cancelled" && (
           <Button size="sm" variant="outline" className="h-6 text-[11px] px-2"
             onClick={handleKeep}>
             Keep partial
