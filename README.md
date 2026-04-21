@@ -1,4 +1,4 @@
-# PostGIS Frontend
+# 🐘 PostGIS Frontend
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
