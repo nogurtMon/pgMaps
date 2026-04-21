@@ -2,21 +2,15 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-**An open-source web interface for PostGIS databases.** Import spatial data, visualize it on a map and share it with anyone. Runs locally or self-hosted.
+**An open-source web interface for PostGIS databases**. Import spatial data, visualize it on a map and share it with anyone. Runs locally or self-hosted.
 
 - Visualize large spatial datasets
-- Import anything (ArcGIS feature server, gpkg, geojson, kml, shp, csv, xlsx)
+- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
 - Share live maps with anyone
-
-Connect to any PostGIS database and manage your spatial data directly from the browser.
-
-Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
-
-PostGIS Frontend is free and open-source software that you can run locally or self host on Docker or Vercel.
 
 ## Features
 
-- **Import** — upload GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, and other spatial formats directly into PostGIS as new tables; or automatically scrape any ArcGIS Feature Server into PostGIS with a single URL
+- **Import** — upload GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, and other spatial formats directly into PostGIS as new tables or automatically scrape any ArcGIS Feature Server into PostGIS with a single URL
 - **Visualize** — render points, lines, and polygons as vector tile layers on an interactive map
 - **Style** — per-layer fill, stroke, opacity, radius; categorical, threshold, and numeric color rules
 - **Filter** — attribute, temporal, numeric range, and categorical controls; filters are applied server-side at tile query time
