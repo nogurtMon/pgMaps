@@ -1,4 +1,4 @@
-# 🐘 PostGIS Frontend
+# <img src="public/Postgresql_elephant.png" height="32" align="center" /> PostGIS Frontend
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
