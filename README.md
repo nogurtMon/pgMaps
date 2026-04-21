@@ -2,7 +2,7 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-An open-source interface for PostGIS-enabled PostgreSQL databases:
+A web interface for PostGIS databases.
 
 - Import anything (Shapefile, GeoJSON, CSV, ArcGIS Feature Servers, etc.)
 - Visualize large datasets without lag
@@ -12,7 +12,7 @@ Connect to any PostGIS-enabled PostgreSQL database and manage your spatial data 
 
 Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
 
-Style and filter your data, create custom maps and share live maps with anyone.
+This is a free and open-source software that you can run locally or self host on Docker or Vercel.
 
 ## Features
 
@@ -27,6 +27,21 @@ Style and filter your data, create custom maps and share live maps with anyone.
 ---
 
 ## Deploy
+
+---
+
+### Local development
+
+```bash
+git clone https://github.com/nogurtMon/postgis-frontend.git
+cd postgis-frontend
+npm install
+npm run dev
+```
+
+No `DSN_ENCRYPTION_KEY` needed — a key is auto-generated locally.
+
+---
 
 ### Vercel
 
@@ -92,34 +107,6 @@ your.domain.com {
 git pull && docker compose down && docker compose up -d --build
 ```
 
----
-
-### Local development
-
-```bash
-git clone https://github.com/nogurtMon/postgis-frontend.git
-cd postgis-frontend
-npm install
-npm run dev
-```
-
-No `DSN_ENCRYPTION_KEY` needed — a key is auto-generated locally.
-
----
-
-## Sharing maps
-
-Any saved map can be shared as a public read-only link via **Save Map → Copy share link**. Viewers can:
-
-- Toggle layer visibility
-- Filter by category, time range, or numeric threshold
-- Zoom to any individual feature
-- Open the attribute table for any layer
-
-Shared maps use the server's database connection — viewers never see or need credentials. Share links remain accessible as long as the server is running and the map has not been deleted.
-
----
-
 ## Environment variables
 
 | Variable | Required | Description |
@@ -131,9 +118,9 @@ Shared maps use the server's database connection — viewers never see or need c
 
 ---
 
-## Security
+### Security
 
-Connection strings are AES-256-GCM encrypted before being stored. The server operator can in principle decrypt them — use a read-only Postgres role if connecting to an instance you don't fully control.
+Connection strings are AES-256-GCM encrypted before being stored.
 
 ---
 
