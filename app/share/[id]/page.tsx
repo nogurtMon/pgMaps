@@ -90,22 +90,33 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="h-[100dvh] overflow-hidden flex flex-col">
-      {!isEmbed && (
-        <header className="bg-background border-b px-3 flex items-center justify-between gap-2 text-[11px] font-mono shrink-0 min-h-[44px]">
-          <Link href="/map" className="flex items-center gap-1.5 font-bold tracking-widest text-primary uppercase text-xs shrink-0 hover:opacity-80 transition-opacity">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/favicon.ico" alt="" className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">PostGIS-Frontend</span>
-          </Link>
-          {mapName
-            ? <span className="font-semibold text-sm truncate flex-1 text-center">{mapName}</span>
-            : <span className="text-muted-foreground text-[10px] flex-1 text-center">shared view · {layers.length} {layers.length === 1 ? "layer" : "layers"}</span>
-          }
-          <div className="flex items-center gap-1 shrink-0">
+    <div className="h-[100dvh] overflow-hidden">
+      <div className="relative w-full h-full">
+        <MaplibreMap
+          layers={layers}
+          basemap={basemap}
+          initialView={initialView}
+          flyTo={flyTo}
+          hideLegend
+          hideGeocoder
+          hideZoom
+        />
+
+        {/* Map title — top center */}
+        {mapName && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-3 py-1 text-sm font-semibold shadow-sm">
+              {mapName}
+            </span>
+          </div>
+        )}
+
+        {/* Basemap switcher + mode toggle — top right */}
+        {!isEmbed && (
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Basemap">
+                <button className="h-7 w-7 flex items-center justify-center rounded bg-background/80 backdrop-blur-sm border shadow-sm hover:bg-background transition-colors text-muted-foreground hover:text-foreground" title="Basemap">
                   <Layers className="h-3.5 w-3.5" />
                 </button>
               </DropdownMenuTrigger>
@@ -117,18 +128,20 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <ModeToggle />
+            <ModeToggle className="h-7 w-7 bg-background/80 backdrop-blur-sm border shadow-sm hover:bg-background" />
           </div>
-        </header>
-      )}
-      <div className="flex-1 relative min-h-0">
-        <MaplibreMap
-          layers={layers}
-          basemap={basemap}
-          initialView={initialView}
-          flyTo={flyTo}
-          hideLegend
-        />
+        )}
+
+        {/* PostGIS Frontend logo — bottom left */}
+        {!isEmbed && (
+          <div className="absolute bottom-6 left-3 z-10">
+            <Link href="/" className="flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2 py-1 shadow-sm hover:bg-background transition-colors">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/Postgresql_elephant.png" alt="" className="w-4 h-4 shrink-0" />
+              <span className="font-bold tracking-widest text-primary uppercase text-[10px] font-mono">PostGIS Frontend</span>
+            </Link>
+          </div>
+        )}
         <ViewerFiltersPanel
           layers={layers}
           onUpdateLayer={updateLayer}
@@ -146,6 +159,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           schema={attrTableLayer.table.table_schema}
           table={attrTableLayer.table.table_name}
           geomCol={attrTableLayer.table.geom_col}
+          filters={attrTableLayer.controls}
           onFlyTo={(bounds) => { setFlyTo({ bounds }); setAttrTableLayer(null); }}
         />
       )}

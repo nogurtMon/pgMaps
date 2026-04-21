@@ -120,6 +120,8 @@ interface Props {
   initialView?: MapView;
   onViewChange?: (view: MapView) => void;
   hideLegend?: boolean;
+  hideGeocoder?: boolean;
+  hideZoom?: boolean;
 }
 
 // ─── feature property value renderer ─────────────────────────────────────────
@@ -135,7 +137,7 @@ function PropValue({ value }: { value: string }) {
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
-export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideLegend }: Props) {
+export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideLegend, hideGeocoder, hideZoom }: Props) {
   const mapRef = React.useRef<any>(null);
   const overlay = React.useMemo(() => new MapboxOverlay({ interleaved: false }), []);
 
@@ -315,15 +317,19 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
         mapStyle={mapStyle}
       />
 
-      <div className="absolute bottom-8 right-2 z-10 pointer-events-none bg-black/50 text-white text-xs font-mono px-1.5 py-0.5 rounded">
-        z{zoom.toFixed(1)}
-      </div>
+      {!hideZoom && (
+        <div className="absolute bottom-8 right-2 z-10 pointer-events-none bg-black/50 text-white text-xs font-mono px-1.5 py-0.5 rounded">
+          z{zoom.toFixed(1)}
+        </div>
+      )}
 
-      <GeocoderControl
-        onSelect={(lng, lat, zoom) => {
-          mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom });
-        }}
-      />
+      {!hideGeocoder && (
+        <GeocoderControl
+          onSelect={(lng, lat, zoom) => {
+            mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom });
+          }}
+        />
+      )}
 
       {!hideLegend && (
         <MapLegend

@@ -246,8 +246,6 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
   const [snapPoints, setSnapPoints] = React.useState<string[]>(() => (f as any).snapPoints ?? []);
   const [snapCounts, setSnapCounts] = React.useState<number[]>(() => (f as any).snapCounts ?? []);
 
-  const sliderMax = snapPoints.length > 1 ? snapPoints.length - 1 : 1000;
-
   function dateToIdx(date: string): number {
     if (snapPoints.length > 1) {
       const t = new Date(date).getTime();
@@ -262,24 +260,6 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
     if (hi === lo) return 0;
     return Math.round(((t - lo) / (hi - lo)) * 1000);
   }
-
-  function idxToDate(idx: number): string {
-    if (snapPoints.length > 1) {
-      const clamped = Math.max(0, Math.min(idx, snapPoints.length - 1));
-      return snapPoints[clamped].slice(0, 10);
-    }
-    const lo = new Date(f.dataMin).getTime(), hi = new Date(f.dataMax).getTime();
-    return new Date(lo + (idx / 1000) * (hi - lo)).toISOString().slice(0, 10);
-  }
-
-  const [sliderFrom, setSliderFrom] = React.useState(() => dateToIdx(f.from));
-  const [sliderTo, setSliderTo] = React.useState(() => dateToIdx(f.to));
-  const debounce = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  React.useEffect(() => {
-    setSliderFrom(dateToIdx(f.from));
-    setSliderTo(dateToIdx(f.to));
-  }, [f.from, f.to, f.dataMin, f.dataMax, snapPoints]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     fetch("/api/pg/columns", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -329,18 +309,6 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
     onUpdateLayer(layer.id, { controls: layer.controls.map(fi => fi.id === f.id ? { ...fi, ...patch } : fi) as LayerControl[] });
   }
 
-  function handleRange(from: number, to: number) {
-    setSliderFrom(from); setSliderTo(to);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => update({ from: idxToDate(from), to: idxToDate(to) }), 80);
-  }
-
-  function handleSnapshot(idx: number) {
-    setSliderFrom(idx);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => { const d = idxToDate(idx); update({ from: d, to: d }); }, 80);
-  }
-
   const fmtLabel = (s: string) => {
     if (!s) return "";
     try { return new Date(s).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
@@ -384,8 +352,10 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
             </div>
           )}
           {f.mode === "snapshot" && (
-            <div className="text-[11px] font-medium text-center tabular-nums mb-1">
-              {fmtLabel(f.from)}
+            <div className="flex justify-center mb-1">
+              <input type="date" value={f.from.slice(0, 10)} min={f.dataMin.slice(0, 10)} max={f.dataMax.slice(0, 10)}
+                onChange={e => { const d = e.target.value; update({ from: d, to: d }); }}
+                className="border rounded px-1 py-0.5 text-[10px] bg-background w-28" />
             </div>
           )}
 
@@ -393,25 +363,11 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
           {snapPoints.length > 1 && snapCounts.length === snapPoints.length && (
             <TemporalHistogram
               snapPoints={snapPoints} snapCounts={snapCounts}
-              activeFrom={f.mode === "all" ? 0 : sliderFrom}
-              activeTo={f.mode === "all" ? snapPoints.length - 1 : sliderTo}
+              activeFrom={f.mode === "all" ? 0 : dateToIdx(f.from)}
+              activeTo={f.mode === "all" ? snapPoints.length - 1 : (f.mode === "snapshot" ? dateToIdx(f.from) : dateToIdx(f.to))}
               mode={f.mode === "snapshot" ? "snapshot" : "range"}
             />
           )}
-
-          {f.mode !== "all" && (<>
-            {f.mode === "snapshot" ? (
-              <Slider min={0} max={sliderMax} step={1}
-                value={[sliderFrom]}
-                onValueChange={([p]) => handleSnapshot(p)}
-              />
-            ) : (
-              <Slider min={0} max={sliderMax} step={1}
-                value={[sliderFrom, sliderTo]}
-                onValueChange={([from, to]) => handleRange(from, to)}
-              />
-            )}
-          </>)}
 
           <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
             <InlineEditDate value={f.dataMin} fmt={fmtLabel} onChange={v => { if (v < f.dataMax.slice(0, 10)) update({ dataMin: v, from: v }); }} />

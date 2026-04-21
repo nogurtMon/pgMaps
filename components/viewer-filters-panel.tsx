@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import { ChevronDown, Eye, EyeOff, Locate, SlidersHorizontal, Table2 } from "lucide-react";
-import type { MapLayer, LayerControl, TemporalMode } from "@/lib/types";
 import { Slider } from "@/components/ui/slider";
+import type { MapLayer, LayerControl, TemporalMode } from "@/lib/types";
 
 // ─── control label helper ─────────────────────────────────────────────────────
 function fmtCol(col: string) {
@@ -143,8 +143,6 @@ function TemporalViewer({ f, layerId, onUpdateLayer }: {
 }) {
   const snapPoints: string[] = (f as any).snapPoints ?? [];
   const snapCounts: number[] = (f as any).snapCounts ?? [];
-  const sliderMax = snapPoints.length > 1 ? snapPoints.length - 1 : 1000;
-  const debounce = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function dateToIdx(date: string): number {
     if (snapPoints.length > 1) {
@@ -161,43 +159,17 @@ function TemporalViewer({ f, layerId, onUpdateLayer }: {
     return Math.round(((t - lo) / (hi - lo)) * 1000);
   }
 
-  function idxToDate(idx: number): string {
-    if (snapPoints.length > 1) {
-      const clamped = Math.max(0, Math.min(idx, snapPoints.length - 1));
-      return new Date(snapPoints[clamped]).toISOString().slice(0, 10);
-    }
-    const lo = new Date(f.dataMin).getTime(), hi = new Date(f.dataMax).getTime();
-    return new Date(lo + (idx / 1000) * (hi - lo)).toISOString().slice(0, 10);
-  }
-
-  const [sliderFrom, setSliderFrom] = React.useState(() => dateToIdx(f.from));
-  const [sliderTo, setSliderTo] = React.useState(() => dateToIdx(f.to));
-
-  React.useEffect(() => {
-    setSliderFrom(dateToIdx(f.from));
-    setSliderTo(dateToIdx(f.to));
-  }, [f.from, f.to]); // eslint-disable-line react-hooks/exhaustive-deps
-
   function update(patch: Partial<typeof f>) {
     onUpdateLayer(layerId, { __controlPatch: { id: f.id, patch } } as any);
-  }
-
-  function handleRange(from: number, to: number) {
-    setSliderFrom(from); setSliderTo(to);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => update({ from: idxToDate(from), to: idxToDate(to) }), 80);
-  }
-
-  function handleSnapshot(idx: number) {
-    setSliderFrom(idx);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => { const d = idxToDate(idx); update({ from: d, to: d }); }, 80);
   }
 
   if (!f.dataMin || !f.dataMax) return null;
 
   return (
     <div className="space-y-2">
+      {f.column && (
+        <p className="text-[10px] text-muted-foreground">Column: <span className="font-mono text-foreground">{f.column}</span></p>
+      )}
       <div className="flex gap-1">
         {(["all", "range", "snapshot"] as TemporalMode[]).map(m => (
           <button key={m} onClick={() => update({ mode: m })}
@@ -225,9 +197,7 @@ function TemporalViewer({ f, layerId, onUpdateLayer }: {
               className="border rounded px-1 py-0.5 text-[10px] bg-background w-28" />
           </div>
           <TemporalHistogram snapPoints={snapPoints} snapCounts={snapCounts}
-            activeFrom={sliderFrom} activeTo={sliderTo} mode="range" />
-          <Slider min={0} max={sliderMax} step={1} value={[sliderFrom, sliderTo]}
-            onValueChange={([from, to]) => handleRange(from, to)} />
+            activeFrom={dateToIdx(f.from)} activeTo={dateToIdx(f.to)} mode="range" />
           <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
             <InlineEditDate value={f.dataMin} onChange={v => { if (v < f.dataMax.slice(0, 10)) update({ dataMin: v, from: v }); }} />
             <InlineEditDate value={f.dataMax} onChange={v => { if (v > f.dataMin.slice(0, 10)) update({ dataMax: v, to: v }); }} align="right" />
@@ -236,11 +206,13 @@ function TemporalViewer({ f, layerId, onUpdateLayer }: {
       )}
       {f.mode === "snapshot" && (
         <div className="space-y-0.5">
-          <div className="text-[11px] font-medium text-center tabular-nums mb-1">{fmtDate(f.from)}</div>
+          <div className="flex justify-center mb-1">
+            <input type="date" value={f.from.slice(0, 10)} min={f.dataMin.slice(0, 10)} max={f.dataMax.slice(0, 10)}
+              onChange={e => { const d = e.target.value; update({ from: d, to: d }); }}
+              className="border rounded px-1 py-0.5 text-[10px] bg-background w-28" />
+          </div>
           <TemporalHistogram snapPoints={snapPoints} snapCounts={snapCounts}
-            activeFrom={sliderFrom} activeTo={sliderFrom} mode="snapshot" />
-          <Slider min={0} max={sliderMax} step={1} value={[sliderFrom]}
-            onValueChange={([pos]) => handleSnapshot(pos)} />
+            activeFrom={dateToIdx(f.from)} activeTo={dateToIdx(f.from)} mode="snapshot" />
           <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
             <InlineEditDate value={f.dataMin} onChange={v => { if (v < f.dataMax.slice(0, 10)) update({ dataMin: v, from: v }); }} />
             <InlineEditDate value={f.dataMax} onChange={v => { if (v > f.dataMin.slice(0, 10)) update({ dataMax: v, to: v }); }} align="right" />
