@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const pool = getPool(dsn);
   const client = await pool.connect();
   try {
-    const [colRes, idxRes, trgRes] = await Promise.all([
+    const [colRes, idxRes, trgRes, geomRes] = await Promise.all([
       // Columns
       client.query(
         `SELECT
@@ -68,12 +68,21 @@ export async function POST(req: NextRequest) {
          ORDER BY trigger_name`,
         [schema, table]
       ),
+      // Geometry columns
+      client.query(
+        `SELECT f_geometry_column AS column_name, type, srid
+         FROM public.geometry_columns
+         WHERE f_table_schema = $1 AND f_table_name = $2
+         ORDER BY f_geometry_column`,
+        [schema, table]
+      ).catch(() => ({ rows: [] })),
     ]);
 
     return NextResponse.json({
       columns: colRes.rows,
       indexes: idxRes.rows,
       triggers: trgRes.rows,
+      geometry: geomRes.rows,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

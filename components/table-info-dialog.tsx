@@ -38,6 +38,12 @@ interface TriggerInfo {
   definition: string;
 }
 
+interface GeomInfo {
+  column_name: string;
+  type: string;
+  srid: number;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -53,6 +59,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
   const [columns, setColumns] = React.useState<ColumnInfo[]>([]);
   const [indexes, setIndexes] = React.useState<IndexInfo[]>([]);
   const [triggers, setTriggers] = React.useState<TriggerInfo[]>([]);
+  const [geometry, setGeometry] = React.useState<GeomInfo[]>([]);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
@@ -82,6 +89,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
         setColumns(data.columns);
         setIndexes(data.indexes);
         setTriggers(data.triggers);
+        setGeometry(data.geometry ?? []);
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
@@ -163,6 +171,19 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
         )}
         {loading && (
           <p className="px-5 pb-3 text-sm text-muted-foreground">Loading…</p>
+        )}
+
+        {geometry.length > 0 && (
+          <div className="px-5 pb-3 flex flex-wrap gap-2">
+            {geometry.map((g) => (
+              <div key={g.column_name} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="font-mono text-foreground font-medium">{g.column_name}</span>
+                <span className="text-muted-foreground/40">·</span>
+                <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">{g.type}</Badge>
+                <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal">SRID {g.srid}</Badge>
+              </div>
+            ))}
+          </div>
         )}
 
         <Tabs defaultValue="columns" className="flex flex-col flex-1 min-h-0">

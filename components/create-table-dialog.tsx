@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { findCol, rowsToFeatures, LAT_COLS, LON_COLS, WKT_COLS } from "@/lib/geo-parse-utils";
+import { Loader2 } from "lucide-react";
 import type { WorkerIn, WorkerOut } from "@/workers/xlsx-worker";
 import { useImportTasks } from "@/lib/import-tasks-context";
 import { toast } from "@/lib/toast";
@@ -175,6 +176,18 @@ function coordsHaveZ(c: any): boolean {
   return c.some(coordsHaveZ);
 }
 
+function truncateCoords(coords: any): any {
+  if (typeof coords[0] === "number") return coords.map((n: number) => Math.round(n * 1e6) / 1e6);
+  return coords.map(truncateCoords);
+}
+
+function truncateGeometry(geom: any): any {
+  if (!geom || !geom.type) return geom;
+  if (geom.type === "GeometryCollection") return { ...geom, geometries: geom.geometries.map(truncateGeometry) };
+  if (!geom.coordinates) return geom;
+  return { ...geom, coordinates: truncateCoords(geom.coordinates) };
+}
+
 function geomHasZ(geometry: any): boolean {
   return !!(geometry?.coordinates && coordsHaveZ(geometry.coordinates));
 }
@@ -183,15 +196,64 @@ function detectGeomType(features: any[]): string {
   const types = new Set<string>();
   for (const f of features) {
     const t = f?.geometry?.type;
-    if (t && t !== "__WKB__") { types.add(t); if (types.size > 1) break; }
+    if (t && t !== "__WKB__") { types.add(t); if (types.size > 2) break; }
   }
-  const base = types.size === 1 ? Array.from(types)[0] : "Geometry";
-  // For specific types, detect Z so PostGIS column matches the coordinate dimension
+
+  let base: string;
+  if (types.size === 0) return "Geometry";
+  if (types.size === 1) {
+    base = Array.from(types)[0];
+  } else if (types.size === 2) {
+    // Collapse singular/multi pairs to the Multi variant
+    const has = (t: string) => types.has(t);
+    if (has("Polygon") && has("MultiPolygon")) base = "MultiPolygon";
+    else if (has("LineString") && has("MultiLineString")) base = "MultiLineString";
+    else if (has("Point") && has("MultiPoint")) base = "MultiPoint";
+    else base = "Geometry";
+  } else {
+    base = "Geometry";
+  }
+
   if (base !== "Geometry") {
     const hasZ = features.slice(0, 20).some((f) => geomHasZ(f?.geometry));
     if (hasZ) return base + "Z";
   }
   return base;
+}
+
+function flattenGeometryCollection(geom: any): any {
+  if (!geom || geom.type !== "GeometryCollection") return geom;
+  const geoms: any[] = (geom.geometries ?? []).map(flattenGeometryCollection).filter(Boolean);
+  if (geoms.length === 0) return null;
+  const polys: any[] = [], lines: any[] = [], points: any[] = [];
+  let hasOther = false;
+  for (const g of geoms) {
+    if (g.type === "Polygon") polys.push(g.coordinates);
+    else if (g.type === "MultiPolygon") polys.push(...g.coordinates);
+    else if (g.type === "LineString") lines.push(g.coordinates);
+    else if (g.type === "MultiLineString") lines.push(...g.coordinates);
+    else if (g.type === "Point") points.push(g.coordinates);
+    else if (g.type === "MultiPoint") points.push(...g.coordinates);
+    else hasOther = true;
+  }
+  if (!hasOther) {
+    if (polys.length && !lines.length && !points.length) return { type: "MultiPolygon", coordinates: polys };
+    if (lines.length && !polys.length && !points.length) return { type: "MultiLineString", coordinates: lines };
+    if (points.length && !polys.length && !lines.length) return { type: "MultiPoint", coordinates: points };
+  }
+  return { ...geom, geometries: geoms };
+}
+
+function normalizeToMulti(geom: any, targetType: string): any {
+  if (!geom || (geom as any).type === "__WKB__") return geom;
+  const target = targetType.replace(/Z$/, "");
+  if (target === "MultiPolygon" && geom.type === "Polygon")
+    return { ...geom, type: "MultiPolygon", coordinates: [geom.coordinates] };
+  if (target === "MultiLineString" && geom.type === "LineString")
+    return { ...geom, type: "MultiLineString", coordinates: [geom.coordinates] };
+  if (target === "MultiPoint" && geom.type === "Point")
+    return { ...geom, type: "MultiPoint", coordinates: [geom.coordinates] };
+  return geom;
 }
 
 function inferColMappings(features: any[]): ColMapping[] {
@@ -522,7 +584,9 @@ async function parseGeoJSON(file: File): Promise<ParsedLayer[]> {
     if (features.length === 0) throw new Error(e.message ?? "Could not parse GeoJSON file");
   }
 
-  features = flattenFeatures(features);
+  features = flattenFeatures(features).map((f: any) =>
+    f.geometry ? { ...f, geometry: truncateGeometry(flattenGeometryCollection(f.geometry)) } : f
+  );
   return [{ name, features, geometryType: detectGeomType(features), srid: 4326 }];
 }
 
@@ -531,7 +595,9 @@ async function parseKML(file: File): Promise<ParsedLayer[]> {
   const { kml } = await import("@tmcw/togeojson");
   const dom = new DOMParser().parseFromString(text, "text/xml");
   const fc = kml(dom);
-  const features = flattenFeatures((fc as any).features ?? []);
+  const features = flattenFeatures((fc as any).features ?? []).map((f: any) =>
+    f.geometry ? { ...f, geometry: truncateGeometry(flattenGeometryCollection(f.geometry)) } : f
+  );
   return [{ name: file.name.replace(/\.[^.]+$/, ""), features, geometryType: detectGeomType(features), srid: 4326 }];
 }
 
@@ -545,19 +611,19 @@ async function parseShapefile(file: File): Promise<ParsedLayer[]> {
   if (ext === "shp") {
     // Raw .shp — geometry only, no attributes
     const geometries: any[] = (shpjs as any).parseShp(buf);
-    const features = geometries.map((g: any) => ({ type: "Feature", geometry: g, properties: {} }));
+    const features = geometries.map((g: any) => ({ type: "Feature", geometry: truncateGeometry(g), properties: {} }));
     return [{ name: baseName, features, geometryType: detectGeomType(features), srid: 4326 }];
   }
 
   // .zip — full shapefile bundle
   const result = await shp(buf);
   const collections = Array.isArray(result) ? result : [result];
-  return collections.map((fc: any) => ({
-    name: fc.fileName ?? baseName,
-    features: fc.features ?? [],
-    geometryType: detectGeomType(fc.features ?? []),
-    srid: 4326,
-  }));
+  return collections.map((fc: any) => {
+    const features = (fc.features ?? []).map((f: any) =>
+      f.geometry ? { ...f, geometry: truncateGeometry(flattenGeometryCollection(f.geometry)) } : f
+    );
+    return { name: fc.fileName ?? baseName, features, geometryType: detectGeomType(features), srid: 4326 };
+  });
 }
 
 async function parseFile(file: File): Promise<ParsedLayer[]> {
@@ -935,7 +1001,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
         if ((f.geometry as any).type === "__WKB__") {
           rows.push({ wkbHex: (f.geometry as any).hex, attrs });
         } else {
-          rows.push({ geomJson: JSON.stringify(f.geometry), attrs });
+          rows.push({ geomJson: JSON.stringify(truncateGeometry(normalizeToMulti(f.geometry, layer.geometryType))), attrs });
         }
       }
       if (!rows.length) return null;
@@ -1075,7 +1141,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
         while (j < layer.features.length && batch.length < 500) {
           const f = layer.features[j++];
           if (!f.geometry) continue;
-          const geomBytes = JSON.stringify(f.geometry).length + 20;
+          const geomBytes = JSON.stringify(truncateGeometry(f.geometry)).length + 20;
           if (batch.length > 0 && payloadBytes + geomBytes > MAX_PAYLOAD_BYTES) { j--; break; }
           batch.push(f);
           payloadBytes += geomBytes;
@@ -1209,7 +1275,13 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                   <Label htmlFor="file-input" className="text-xs">Supported formats: .gpkg, .geojson, .kml, .shp, .zip, .csv, .xlsx</Label>
                   <label htmlFor="file-input"
                     className="flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground cursor-pointer hover:bg-muted/40 transition-colors">
-                    {filePhase === "parsing" ? "Reading file…" : (
+                    {filePhase === "parsing" ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <span className="text-sm">Reading file…</span>
+                        <span className="text-xs text-muted-foreground/70">This may take a moment for large files</span>
+                      </>
+                    ) : (
                       <><span>Click to select or drag & drop</span>
                       <span className="text-xs font-mono">.gpkg .geojson .kml .shp .zip .csv .xlsx</span></>
                     )}
