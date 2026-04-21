@@ -2,10 +2,10 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-**An open-source web interface for PostGIS databases**. Import spatial data, visualize it on a map and share it with anyone. Runs locally or self-hosted.
+**An open-source web interface for PostGIS databases**. Import spatial data into PostGIS, visualize it on a map and share it with anyone. Runs locally or self-hosted.
 
+- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX) into PostGIS
 - Visualize large spatial datasets
-- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
 - Share live maps with anyone
 
 ## Features
