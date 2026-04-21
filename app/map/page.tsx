@@ -149,7 +149,7 @@ export default function Home() {
         <span className="flex items-center gap-1.5 font-bold tracking-widest text-primary uppercase text-xs shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/favicon.ico" alt="" className="w-4 h-4 shrink-0" />
-          PostGIS Frontend
+          PostGIS-Frontend
         </span>
 
         <button

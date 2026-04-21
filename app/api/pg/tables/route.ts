@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const { connectionId, dsn: legacyDsn } = await req.json();
   let dsn: string;
   try { dsn = await resolveDsnFromRequest({ connectionId, dsn: legacyDsn }); }
-  catch { return NextResponse.json({ error: "Invalid token" }, { status: 400 }); }
+  catch (e: any) { return NextResponse.json({ error: e.message ?? "Invalid token" }, { status: 400 }); }
   const pool = getPool(dsn);
   // Query pg_catalog directly — more reliable than information_schema for PostGIS types.
   // Returns only tables that have at least one geometry/geography column.

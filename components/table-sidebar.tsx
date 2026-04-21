@@ -55,6 +55,8 @@ function friendlyConnError(msg: string): { title: string; detail: string } {
     return { title: "Database not found", detail: "Check that the database name in your connection string is correct." };
   if (/ENOTFOUND|getaddrinfo/i.test(msg))
     return { title: "Host not found", detail: "The hostname in your connection string could not be resolved. Check for typos." };
+  if (/POSTGRES_URL|storage database/i.test(msg))
+    return { title: "Storage not configured", detail: "Set POSTGRES_URL in your .env file to enable saved connections. See .env.example for setup instructions." };
   return { title: "Connection error", detail: msg };
 }
 

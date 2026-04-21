@@ -155,7 +155,7 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
               <div className="space-y-1">
                 <p className="font-medium text-destructive text-xs">Storage not configured</p>
                 <p className="text-xs text-muted-foreground">
-                  Set a <code className="font-mono bg-muted px-0.5 rounded">POSTGRES_URL</code> environment variable to store connections and shared maps.
+                  Set a <code className="font-mono bg-muted px-0.5 rounded">POSTGRES_URL</code> environment variable pointing to any Postgres database. The app automatically creates two tables to store encrypted connections and saved views.
                 </p>
               </div>
             </div>

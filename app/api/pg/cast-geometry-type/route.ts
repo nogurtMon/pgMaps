@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const { connectionId, dsn: legacyDsn, schema, table, geomCol, newType, srid } = await req.json();
   let dsn: string;
   try { dsn = await resolveDsnFromRequest({ connectionId, dsn: legacyDsn }); }
-  catch { return NextResponse.json({ error: "Invalid token" }, { status: 400 }); }
+  catch (e: any) { return NextResponse.json({ error: e.message ?? "Invalid token" }, { status: 400 }); }
   if (!VALID_IDENT.test(schema) || !VALID_IDENT.test(table))
     return NextResponse.json({ error: "Invalid schema or table" }, { status: 400 });
 
