@@ -1,6 +1,4 @@
-# <img src="public/Postgresql_elephant.png" height="32" align="left" />   PostGIS Frontend
-
-<img src="public/postgres-frontend-logo1.png" width="300" />
+# <img src="public/Postgresql_elephant.png" height="32" align="center" />   PostGIS Frontend
 
 **An open-source web interface for PostGIS databases**. Import spatial data into PostGIS, visualize it on a map and share it with anyone. Runs locally or self-hosted.
 
