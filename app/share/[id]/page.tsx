@@ -10,7 +10,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Layers } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { ViewerFiltersPanel } from "@/components/viewer-filters-panel";
-import { AttributeTableDialog } from "@/components/attribute-table-dialog";
 import type { ZoomTarget } from "@/components/maplibre-map";
 
 const MaplibreMap = dynamic(() => import("@/components/maplibre-map"), { ssr: false });
@@ -22,7 +21,6 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   const [basemap, setBasemap] = React.useState("liberty");
   const [initialView, setInitialView] = React.useState<{ longitude: number; latitude: number; zoom: number } | undefined>(undefined);
   const [flyTo, setFlyTo] = React.useState<ZoomTarget | null>(null);
-  const [attrTableLayer, setAttrTableLayer] = React.useState<MapLayer | null>(null);
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = React.useState("");
 
@@ -147,22 +145,8 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           onUpdateLayer={updateLayer}
           onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}
           onFlyTo={(bounds) => setFlyTo({ bounds })}
-          onOpenAttributeTable={setAttrTableLayer}
         />
       </div>
-      {attrTableLayer && (
-        <AttributeTableDialog
-          open={!!attrTableLayer}
-          onOpenChange={(v) => { if (!v) setAttrTableLayer(null); }}
-          connectionId=""
-          shareId={id}
-          schema={attrTableLayer.table.table_schema}
-          table={attrTableLayer.table.table_name}
-          geomCol={attrTableLayer.table.geom_col}
-          filters={attrTableLayer.controls}
-          onFlyTo={(bounds) => { setFlyTo({ bounds }); setAttrTableLayer(null); }}
-        />
-      )}
     </div>
   );
 }
