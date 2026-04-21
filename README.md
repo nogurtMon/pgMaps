@@ -4,15 +4,15 @@
 
 An open-source interface for PostGIS-enabled PostgreSQL databases:
 
-- Import anything
-- Visualize large datasets
-- Share live maps* with anyone
-* Live maps are updated everytime your database is.
+- Import anything (Shapefile, GeoJSON, CSV, ArcGIS Feature Servers, etc.)
+- Visualize large datasets without lag
+- Share live maps with anyone
 
-Connect to any PostGIS database and manage your spatial data directly from the browser.
+Connect to any PostGIS-enabled PostgreSQL database and manage your spatial data directly from the browser.
+
 Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
 
-Style and filter your data; create custom maps; and share maps as public read-only links. Read-only maps are updated everytime your PostGIS is.
+Style and filter your data, create custom maps and share live maps with anyone.
 
 ## Features
 
