@@ -2,7 +2,7 @@
 
 <img src="public/postgres-frontend-logo1.png" width="300" />
 
-**An open-source web interface for PostGIS databases.** Import spatial data, visualize it on an interactive map, and share it with anyone. Runs locally or self-hosted on Docker or Vercel.
+**An open-source web interface for PostGIS databases.** Import spatial data, visualize it on a map and share it with anyone. Runs locally or self-hosted.
 
 - Visualize large spatial datasets
 - Import anything (ArcGIS feature server, gpkg, geojson, kml, shp, csv, xlsx)
@@ -12,7 +12,7 @@ Connect to any PostGIS database and manage your spatial data directly from the b
 
 Includes table management tools to optimize tiling performance and scripts to import GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, ArcGIS Feature Servers and other spatial formats directly into PostGIS.
 
-This is a free and open-source software that you can run locally or self host on Docker or Vercel.
+PostGIS Frontend is free and open-source software that you can run locally or self host on Docker or Vercel.
 
 ## Features
 
