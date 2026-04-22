@@ -113,9 +113,9 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           onFlyTo={(bounds) => setFlyTo({ bounds })}
         />
 
-        {/* Fullscreen toggle — bottom left */}
+        {/* Fullscreen toggle — desktop only (mobile browsers block iframe fullscreen) */}
         <button onClick={toggleFullscreen} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          className="absolute bottom-10 right-2 z-20 w-9 h-9 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+          className="hidden md:flex absolute bottom-10 right-2 z-20 w-9 h-9 items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
           {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
         </button>
       </div>
