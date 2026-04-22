@@ -37,6 +37,7 @@ interface Props {
   onZoomToTable?: (table: TableRow) => void;
   onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
   onOpenSettings?: () => void;
+  onConnectionLost?: () => void;
   basemap: string;
   onBasemapChange: (key: string) => void;
 }
@@ -1270,7 +1271,7 @@ function AttributeFilterEditor({ f, layer, nonGeomCols, drafts, setDrafts, onUpd
 export function TableSidebar({
   connectionId, connectionLoaded, layers,
   onAddLayer, onRemoveLayer, onUpdateLayer, onReorderLayers,
-  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings,
+  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onConnectionLost,
   basemap, onBasemapChange,
 }: Props) {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
@@ -1431,7 +1432,13 @@ export function TableSidebar({
         const allSchemas = new Set<string>(data.tables.map((t: any) => t.table_schema));
         setCollapsed(allSchemas);
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        setError(e.message);
+        if (/connection not found/i.test(e.message)) {
+          onConnectionLost?.();
+          onOpenSettings?.();
+        }
+      })
       .finally(() => setLoading(false));
   }, [connectionId, refreshKey]);
 

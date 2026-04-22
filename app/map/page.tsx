@@ -199,6 +199,7 @@ export default function Home() {
           onZoomToLayer={zoomToLayer}
           onFlyTo={(bounds) => setZoomTarget({ bounds })}
           onOpenSettings={() => setSettingsOpen(true)}
+          onConnectionLost={() => { clearConnection(); setLayers([]); }}
           basemap={basemap}
           onBasemapChange={setBasemap}
         />
