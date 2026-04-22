@@ -922,7 +922,7 @@ export default function LandingPage() {
         {/* ── FEATURES ── */}
         <section id="features" className="lp-section">
           <span className="lp-label lp-reveal">Features</span>
-          <h2 className="lp-h2 lp-reveal">An open-source web interface for PostGIS databases.</h2>
+          <h2 className="lp-h2 lp-reveal">A web interface for PostGIS databases.</h2>
 
           <div className="lp-features-grid lp-reveal">
             {FEATURES.map((f) => (
