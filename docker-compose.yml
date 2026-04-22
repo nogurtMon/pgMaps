@@ -1,11 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: postgis_frontend
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   app:
     build: .
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY:-}
+      - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
-      - POSTGRES_URL=${POSTGRES_URL}
-      - PORT=${PORT:-3000} # optional read from .env
+      - POSTGRES_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgis_frontend
+      - PORT=${PORT:-3000}
+    depends_on:
+      - postgres
     restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -42,7 +42,7 @@ cd postgis-frontend
 cp .env.example .env
 ```
 
-Open `.env` and fill in `POSTGRES_URL`, `APP_PASSWORD`, and `DSN_ENCRYPTION_KEY`.
+Open `.env` and fill in `APP_PASSWORD` and `DSN_ENCRYPTION_KEY`. `POSTGRES_URL` is handled automatically by the bundled database.
 
 
 **3. Run**
@@ -115,7 +115,7 @@ Open [http://localhost:3000](http://localhost:3000).
 |---|---|---|
 | `DSN_ENCRYPTION_KEY` | Yes (Vercel) | 64 hex chars. Encrypts database connection strings at rest. Auto-generated locally and in Docker. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
-| `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
+| `POSTGRES_URL` | Yes (Vercel / Local) | Postgres connection string for the app's own storage (connections, saved views). Auto-configured in Docker. The app creates its tables automatically on first request. |
 | `PORT` | No | Default: `3000`. Docker only. |
 | `SHOW_LANDING_PAGE` | No | If set, `/` shows the marketing landing page. Otherwise `/` redirects to `/map`. |
 
