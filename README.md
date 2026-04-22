@@ -115,18 +115,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 **3. Run**
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 Open `http://localhost:3000`. To use a different port, add `PORT=8080` (or any port) to your `.env` file.
-
-**Custom domain (HTTPS):** put it behind [Caddy](https://caddyserver.com):
-
-```
-your.domain.com {
-    reverse_proxy localhost:3000
-}
-```
 
 **Update:**
 
