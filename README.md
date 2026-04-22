@@ -90,6 +90,7 @@ git pull && docker compose down && docker compose up -d --build
 | `APP_PASSWORD` | Recommended | Password to access the app. Share links at `/share/[id]` remain public regardless. If unset, no auth is required. |
 | `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |
+| `SHOW_LANDING_PAGE` | No | If set, `/` shows the marketing landing page. Otherwise `/` redirects to `/map`. |
 
 ---
 

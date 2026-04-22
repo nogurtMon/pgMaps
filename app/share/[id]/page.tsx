@@ -102,8 +102,8 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
         {/* Map title — top center */}
         {mapName && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-3 py-1 text-sm font-semibold shadow-sm">
+          <div className="absolute top-3 left-12 right-12 z-10 pointer-events-none flex justify-center">
+            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1 text-[11px] sm:text-sm font-semibold shadow-sm whitespace-nowrap overflow-hidden text-ellipsis inline-block max-w-full">
               {mapName}
             </span>
           </div>

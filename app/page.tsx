@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,6 +30,8 @@ const FEATURES = [
 ];
 
 export default function LandingPage() {
+  if (!process.env.SHOW_LANDING_PAGE) redirect("/map");
+
   return (
     <div className={`${inter.className} min-h-screen bg-background text-foreground`}>
 
@@ -117,10 +120,19 @@ export default function LandingPage() {
           <a
             href="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3"
             target="_blank" rel="noopener noreferrer"
-            className="absolute top-3 right-3 flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm hover:bg-background transition-colors"
+            title="Open full screen"
+            className="absolute top-3 right-3 flex items-center justify-center w-7 h-7 bg-background/80 backdrop-blur-sm border rounded-md shadow-sm hover:bg-background transition-colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-            Open full screen
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+          </a>
+          <a
+            href="https://www.postgis-frontend.com"
+            target="_blank" rel="noopener noreferrer"
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2 py-1 shadow-sm hover:bg-background transition-colors"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/Postgresql_elephant.png" alt="" className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-bold tracking-widest uppercase text-primary font-mono">PostGIS Frontend</span>
           </a>
         </div>
       </section>
