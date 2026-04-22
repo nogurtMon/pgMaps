@@ -130,9 +130,9 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           </div>
         )}
 
-        {/* PostGIS Frontend logo — bottom left */}
+        {/* PostGIS Frontend logo — bottom left, hidden on small screens */}
         {!isEmbed && (
-          <div className="absolute bottom-6 left-3 z-10">
+          <div className="absolute bottom-6 left-3 z-10 hidden md:block">
             <Link href="/" className="flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2 py-1 shadow-sm hover:bg-background transition-colors">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/Postgresql_elephant.png" alt="" className="w-4 h-4 shrink-0" />
