@@ -955,20 +955,6 @@ export default function LandingPage() {
               src="https://www.postgis-frontend.com/share/4a34704d-b51f-4fd5-9ab0-646e7a6335e3"
               allowFullScreen
             />
-            <a
-              href="https://www.postgis-frontend.com/share/4a34704d-b51f-4fd5-9ab0-646e7a6335e3"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="lp-demo-open"
-              title="Open full screen"
-            >
-              <ExternalIcon />
-            </a>
-            <a href="https://www.postgis-frontend.com" target="_blank" rel="noopener noreferrer" className="lp-demo-brand">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/Postgresql_elephant.png" alt="" style={{width:14,height:14,opacity:0.8}} />
-              <span>PostGIS Frontend</span>
-            </a>
           </div>
         </section>
 

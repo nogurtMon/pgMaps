@@ -21,11 +21,6 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = React.useState("");
 
-  const [isEmbed, setIsEmbed] = React.useState(false);
-  React.useEffect(() => {
-    try { setIsEmbed(window.self !== window.top); } catch { setIsEmbed(true); }
-  }, []);
-
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   React.useEffect(() => {
     function onChange() { setIsFullscreen(!!document.fullscreenElement); }
@@ -118,13 +113,11 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           onFlyTo={(bounds) => setFlyTo({ bounds })}
         />
 
-        {/* Fullscreen toggle — bottom right (hidden in iframes) */}
-        {!isEmbed && (
-          <button onClick={toggleFullscreen} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            className="absolute bottom-10 right-2 z-20 w-9 h-9 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
-            {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-          </button>
-        )}
+        {/* Fullscreen toggle — bottom left */}
+        <button onClick={toggleFullscreen} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          className="absolute bottom-10 right-2 z-20 w-9 h-9 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+          {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+        </button>
       </div>
     </div>
   );
