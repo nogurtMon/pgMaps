@@ -945,7 +945,7 @@ export default function LandingPage() {
         {/* ── LIVE DEMO ── */}
         <section id="demo" className="lp-section" style={{paddingTop: 0}}>
           <span className="lp-label lp-reveal">Live Demo</span>
-          <h2 className="lp-h2 lp-reveal">An interactive map, streamed live from PostGIS.</h2>
+          <h2 className="lp-h2 lp-reveal">Interactive maps, streamed live from PostGIS.</h2>
           <p className="lp-reveal" style={{marginTop:12, fontFamily:'var(--font-sans)', fontSize:15, color:'var(--body)', fontWeight:300}}>
             No login. Fast setup. A live map built with PostGIS Frontend, showing what your data could look like in minutes.
           </p>

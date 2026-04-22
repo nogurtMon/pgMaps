@@ -368,7 +368,7 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
           {/* Geocoder + compass/home stacked below it */}
           <div className="flex flex-col gap-1">
             <GeocoderControl
-              className="w-[min(9rem,calc(100vw-64px))] md:w-[min(16rem,calc(100vw-88px))] z-10"
+              className="w-[min(14rem,calc(100vw-52px))] md:w-[min(16rem,calc(100vw-88px))] z-10"
               inputHeight="h-7 md:h-10"
               onSelect={(lng, lat, zoom) => mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom })}
             />

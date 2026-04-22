@@ -29,14 +29,43 @@
 
 ### Local development
 
+**1. Clone and install**
+
 ```bash
 git clone https://github.com/nogurtMon/postgis-frontend.git
 cd postgis-frontend
 npm install
+```
+
+**2. Create a `.env.local` file**
+
+```bash
+cp .env.example .env.local   # or create it manually
+```
+
+Open `.env.local` and fill in your values:
+
+```env
+# Required — Postgres connection string for the app's own storage.
+# The app creates its tables automatically on first run.
+# Example: postgres://user:password@localhost:5432/mydb
+POSTGRES_URL=postgres://user:password@host:5432/dbname
+
+# Optional — Password to access the app.
+# If unset, no login is required.
+# Share links at /share/[id] remain public regardless.
+APP_PASSWORD=yourpassword
+```
+
+> `DSN_ENCRYPTION_KEY` is **not needed locally** — a temporary key is auto-generated on startup.
+
+**3. Start the dev server**
+
+```bash
 npm run dev
 ```
 
-No `DSN_ENCRYPTION_KEY` needed — a key is auto-generated locally.
+Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
