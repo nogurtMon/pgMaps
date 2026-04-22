@@ -40,12 +40,9 @@ cd postgis-frontend
 
 ```bash
 cp .env.example .env
-sed -i "s/^DSN_ENCRYPTION_KEY=.*/DSN_ENCRYPTION_KEY=$(openssl rand -hex 32)/" .env
 ```
 
-> On macOS, use `sed -i ''` instead of `sed -i`.
-
-Open `.env` and fill in `POSTGRES_URL` and `APP_PASSWORD`.
+Open `.env` and fill in `POSTGRES_URL`, `APP_PASSWORD`, and `DSN_ENCRYPTION_KEY`.
 
 
 **3. Run**
