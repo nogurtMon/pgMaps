@@ -27,8 +27,8 @@ const FEATURES = [
   },
   {
     icon: "🔗",
-    title: "Share with one link",
-    desc: "Generate a public, read-only URL that carries your layers, styles, and active filters — no account needed to view it.",
+    title: "Share live maps",
+    desc: "Generate a public, read-only URL that streams your PostGIS data to an interactive read-only map — no need to redeploy everytime your data changes.",
     tags: [],
   },
   {
@@ -922,7 +922,7 @@ export default function LandingPage() {
         {/* ── FEATURES ── */}
         <section id="features" className="lp-section">
           <span className="lp-label lp-reveal">Features</span>
-          <h2 className="lp-h2 lp-reveal">Stream your data live from PostGIS.</h2>
+          <h2 className="lp-h2 lp-reveal">Streamline common PostGIS workflows.</h2>
 
           <div className="lp-features-grid lp-reveal">
             {FEATURES.map((f) => (
