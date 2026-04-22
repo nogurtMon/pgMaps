@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { Inter } from "next/font/google";
+const inter = Inter({ subsets: ["latin"] });
 
 const FEATURES = [
   {
@@ -29,7 +30,7 @@ const FEATURES = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground font-mono">
+    <div className={`${inter.className} min-h-screen bg-background text-foreground`}>
 
       {/* Nav */}
       <header className="border-b px-6 py-3 flex items-center justify-between">
@@ -52,11 +53,11 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="max-w-4xl mx-auto px-6 pt-20 pb-12 text-center">
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-          Open-Source Web Interface for{" "}
+          A Web Interface for{" "}
           <span className="text-primary">PostGIS Databases</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-          Import spatial data, visualize it on an interactive map, and share it with anyone.
+          Import spatial data, visualize it on an interactive map, then share that map with anyone.
           Open-source and self-hosted.
         </p>
         <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -106,13 +107,21 @@ export default function LandingPage() {
       <section className="max-w-4xl mx-auto px-6 pb-16">
         <h2 className="text-xl font-bold mb-2 text-center">Live demo</h2>
         <p className="text-sm text-muted-foreground text-center mb-6">A real shared map — no login required.</p>
-        <div className="rounded-xl overflow-hidden border shadow-lg" style={{ height: "520px" }}>
+        <div className="relative rounded-xl overflow-hidden border shadow-lg" style={{ height: "520px" }}>
           <iframe
             src="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3"
             className="w-full h-full"
             frameBorder="0"
             allowFullScreen
           />
+          <a
+            href="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3"
+            target="_blank" rel="noopener noreferrer"
+            className="absolute top-3 right-3 flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm hover:bg-background transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            Open full screen
+          </a>
         </div>
       </section>
 
