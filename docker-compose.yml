@@ -2,10 +2,9 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
       - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY}
-      - SHARES_DIR=/app/data/shares
-    volumes:
-      - ./data/shares:/app/data/shares
+      - APP_PASSWORD=${APP_PASSWORD}
+      - POSTGRES_URL=${POSTGRES_URL}
     restart: unless-stopped

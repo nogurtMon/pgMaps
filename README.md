@@ -83,29 +83,42 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Docker
 
-**Requirements:** Docker, Node.js (to generate the key)
+**Requirements:** Docker, Node.js
+
+**1. Install Docker (Linux)**
 
 ```bash
-# Install Docker (Linux)
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER && newgrp docker
-
-# Clone and configure
-git clone https://github.com/nogurtMon/postgis-frontend.git
-cd postgis-frontend
-node -e "console.log('DSN_ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" > .env
-echo "APP_PASSWORD=yourpassword" >> .env
-echo "POSTGRES_URL=postgres://user:pass@host:5432/dbname" >> .env
-
-# Run
-docker compose up -d
 ```
-
-Open `http://localhost:3000`.
 
 > `newgrp docker` applies the group change to your current session. Log out and back in to make it permanent.
 
+**2. Clone and configure**
+
+```bash
+git clone https://github.com/nogurtMon/postgis-frontend.git
+cd postgis-frontend
+```
+
+Create a `.env` file with your values:
+
+```bash
+node -e "console.log('DSN_ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" > .env
+echo "APP_PASSWORD=yourpassword" >> .env
+echo "POSTGRES_URL=postgres://user:pass@host:5432/dbname" >> .env
+```
+
+**3. Run**
+
+```bash
+docker compose up -d
+```
+
+Open `http://localhost:3000`. To use a different port, add `PORT=8080` (or any port) to your `.env` file.
+
 **Custom domain (HTTPS):** put it behind [Caddy](https://caddyserver.com):
+
 ```
 your.domain.com {
     reverse_proxy localhost:3000
@@ -113,6 +126,7 @@ your.domain.com {
 ```
 
 **Update:**
+
 ```bash
 git pull && docker compose down && docker compose up -d --build
 ```
