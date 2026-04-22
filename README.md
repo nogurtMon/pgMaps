@@ -40,6 +40,7 @@ cd postgis-frontend
 
 ```bash
 cp .env.example .env
+node -e "console.log('DSN_ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" >> .env
 ```
 
 Open `.env` in any text editor and fill in `POSTGRES_URL` and `APP_PASSWORD`.

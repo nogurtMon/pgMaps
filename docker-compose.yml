@@ -7,6 +7,5 @@ services:
       - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY:-}
       - APP_PASSWORD=${APP_PASSWORD}
       - POSTGRES_URL=${POSTGRES_URL}
-    volumes:
-      - ./.dsn-dev-key:/app/.dsn-dev-key
+      - PORT=${PORT:-3000} # optional read from .env
     restart: unless-stopped
