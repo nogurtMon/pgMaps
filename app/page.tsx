@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Syne, DM_Mono, DM_Sans } from "next/font/google";
 import { LandingNav } from "@/components/landing-nav";
+import Script from "next/script";
 
 const syne = Syne({ subsets: ["latin"], weight: ["400", "600", "700", "800"], variable: "--font-syne" });
 const dmMono = DM_Mono({ subsets: ["latin"], weight: ["300", "400"], variable: "--font-mono" });
@@ -16,31 +17,31 @@ const FEATURES = [
   {
     icon: "⚡",
     title: "Render millions of features",
-    desc: "Server-side vector tile layers keep your maps snappy at any scale — points, lines, and polygons, all handled.",
+    desc: "Server-side vector tile layers keep your maps snappy at any scale.",
     tags: [],
   },
   {
     icon: "🎨",
     title: "Style & filter with precision",
-    desc: "Per-layer fill, stroke, opacity, and radius. Categorical, threshold, and numeric color rules. All filters run server-side.",
+    desc: "Fill, stroke, opacity and radius. Categorical, threshold, and numeric color rules.",
     tags: [],
   },
   {
     icon: "🔗",
     title: "Share live maps",
-    desc: "Generate a public, read-only URL that streams your PostGIS data to an interactive read-only map — no need to redeploy everytime your data changes.",
+    desc: "Stream your PostGIS data to public interactive maps.",
     tags: [],
   },
   {
     icon: "🗂️",
     title: "Explore your attributes",
-    desc: "Browse, search, sort, and filter any layer's data table. Click any row to fly the map straight to that feature.",
+    desc: "Browse, search, sort, and filter any layer's data table.",
     tags: [],
   },
   {
     icon: "🛠️",
     title: "Table management included",
-    desc: "Spatial indexes, SRIDs, primary keys, geometry casts, table clustering — all from a clean UI, no psql required.",
+    desc: "Spatial indexes, SRIDs, primary keys, geometry casts, table clustering — all from a clean UI.",
     tags: [],
   },
 ];
@@ -117,10 +118,10 @@ export default function LandingPage() {
 
         .lp-nav-logo {
           font-family: var(--font-syne), sans-serif;
-          font-weight: 800;
-          font-size: 13px;
-          letter-spacing: 0.095em;
-          text-transform: uppercase;
+          font-weight: 700;
+          font-size: 18px;
+          letter-spacing: -0.05em;
+          text-transform: none;
           color: var(--bright);
           display: flex;
           align-items: center;
@@ -598,7 +599,7 @@ export default function LandingPage() {
           overflow: hidden;
           border: 1px solid var(--border);
           box-shadow: 0 40px 100px rgba(0,0,0,0.55);
-          height: 520px;
+          height: 600px;
           margin-top: 40px;
         }
 
@@ -803,20 +804,18 @@ export default function LandingPage() {
         }
       `}</style>
 
-      <script dangerouslySetInnerHTML={{__html: `
-        window.addEventListener('load', function() {
-          setTimeout(function() {
-            var obs = new IntersectionObserver(function(entries) {
-              entries.forEach(function(e) {
-                if (e.isIntersecting) {
-                  e.target.classList.add('visible');
-                  obs.unobserve(e.target);
-                }
-              });
-            }, { threshold: 0.1 });
-            document.querySelectorAll('.lp-reveal').forEach(function(el) { obs.observe(el); });
-          }, 0);
-        });
+      <Script id="lp-scroll-reveal" strategy="afterInteractive" dangerouslySetInnerHTML={{__html: `
+        (function() {
+          var obs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(e) {
+              if (e.isIntersecting) {
+                e.target.classList.add('visible');
+                obs.unobserve(e.target);
+              }
+            });
+          }, { threshold: 0.1 });
+          document.querySelectorAll('.lp-reveal').forEach(function(el) { obs.observe(el); });
+        })();
       `}} />
 
       <div className={`${syne.variable} ${dmMono.variable} ${dmSans.variable}`}>
@@ -953,11 +952,11 @@ export default function LandingPage() {
 
           <div className="lp-demo-frame lp-reveal">
             <iframe
-              src="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3"
+              src="https://www.postgis-frontend.com/share/4a34704d-b51f-4fd5-9ab0-646e7a6335e3"
               allowFullScreen
             />
             <a
-              href="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3"
+              href="https://www.postgis-frontend.com/share/4a34704d-b51f-4fd5-9ab0-646e7a6335e3"
               target="_blank"
               rel="noopener noreferrer"
               className="lp-demo-open"

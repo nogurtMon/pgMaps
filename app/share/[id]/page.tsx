@@ -5,12 +5,9 @@ import { use } from "react";
 import { DEFAULT_STYLE, migrateLayerControls } from "@/lib/types";
 import type { MapLayer } from "@/lib/types";
 import Link from "next/link";
-import { BASEMAP_OPTIONS } from "@/lib/types";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Layers } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle";
-import { ViewerFiltersPanel } from "@/components/viewer-filters-panel";
+import { ShareMapBar } from "@/components/share-map-bar";
 import type { ZoomTarget } from "@/components/maplibre-map";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 const MaplibreMap = dynamic(() => import("@/components/maplibre-map"), { ssr: false });
 
@@ -28,6 +25,17 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   React.useEffect(() => {
     try { setIsEmbed(window.self !== window.top); } catch { setIsEmbed(true); }
   }, []);
+
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  React.useEffect(() => {
+    function onChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
+  }
 
   React.useEffect(() => {
     fetch(`/api/share/${id}`)
@@ -96,56 +104,38 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           initialView={initialView}
           flyTo={flyTo}
           hideLegend
-          hideGeocoder
           hideZoom
+          shareControls={!isEmbed}
         />
 
-        {/* Map title — top center */}
-        {mapName && (
-          <div className="absolute top-3 left-12 right-12 z-10 pointer-events-none flex justify-center">
-            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1 text-[11px] sm:text-sm font-semibold shadow-sm whitespace-nowrap overflow-hidden text-ellipsis inline-block max-w-full">
+        {!isEmbed && (
+          <ShareMapBar
+            mapName={mapName}
+            layers={layers}
+            basemap={basemap}
+            onSetBasemap={setBasemap}
+            onUpdateLayer={updateLayer}
+            onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}
+            onFlyTo={(bounds) => setFlyTo({ bounds })}
+          />
+        )}
+
+        {/* Fullscreen toggle — bottom right */}
+        {!isEmbed && (
+          <button onClick={toggleFullscreen} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="absolute bottom-10 right-2 z-20 w-9 h-9 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+            {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+          </button>
+        )}
+
+        {/* Minimal title for embed mode */}
+        {isEmbed && mapName && (
+          <div className="absolute top-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
+            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1 text-[11px] font-semibold shadow-sm whitespace-nowrap overflow-hidden text-ellipsis inline-block max-w-full">
               {mapName}
             </span>
           </div>
         )}
-
-        {/* Basemap switcher + mode toggle — top right */}
-        {!isEmbed && (
-          <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="h-7 w-7 flex items-center justify-center rounded bg-background/80 backdrop-blur-sm border shadow-sm hover:bg-background transition-colors text-muted-foreground hover:text-foreground" title="Basemap">
-                  <Layers className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {BASEMAP_OPTIONS.map(({ key, label }) => (
-                  <DropdownMenuItem key={key} onClick={() => setBasemap(key)} className={basemap === key ? "font-semibold" : ""}>
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <ModeToggle className="h-7 w-7 bg-background/80 backdrop-blur-sm border shadow-sm hover:bg-background" />
-          </div>
-        )}
-
-        {/* PostGIS Frontend logo — bottom left, hidden on small screens */}
-        {!isEmbed && (
-          <div className="absolute bottom-6 left-3 z-10 hidden md:block">
-            <Link href="/" className="flex items-center gap-1.5 bg-background/80 backdrop-blur-sm border rounded-md px-2 py-1 shadow-sm hover:bg-background transition-colors">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/Postgresql_elephant.png" alt="" className="w-4 h-4 shrink-0" />
-              <span className="font-bold tracking-widest text-primary uppercase text-[10px] font-mono">PostGIS Frontend</span>
-            </Link>
-          </div>
-        )}
-        <ViewerFiltersPanel
-          layers={layers}
-          onUpdateLayer={updateLayer}
-          onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}
-          onFlyTo={(bounds) => setFlyTo({ bounds })}
-        />
       </div>
     </div>
   );

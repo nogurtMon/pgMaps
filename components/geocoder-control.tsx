@@ -13,9 +13,12 @@ interface NominatimResult {
 
 interface Props {
   onSelect: (lng: number, lat: number, zoom: number) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  inputHeight?: string;
 }
 
-export function GeocoderControl({ onSelect }: Props) {
+export function GeocoderControl({ onSelect, className, style, inputHeight = "h-8" }: Props) {
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<NominatimResult[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -23,7 +26,6 @@ export function GeocoderControl({ onSelect }: Props) {
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
   React.useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -34,47 +36,45 @@ export function GeocoderControl({ onSelect }: Props) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
+  async function fetchResults(value: string) {
+    if (!value.trim()) { setResults([]); setOpen(false); return; }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ q: value, format: "json", limit: "6", addressdetails: "0" });
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { "Accept-Language": "en" } });
+      const data: NominatimResult[] = await res.json();
+      setResults(data);
+      setOpen(data.length > 0);
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleChange(value: string) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value.trim()) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(() => fetchResults(value), 400);
+  }
 
-    if (!value.trim()) {
-      setResults([]);
-      setOpen(false);
-      return;
-    }
+  function handleSearch() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    fetchResults(query);
+  }
 
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({
-          q: value,
-          format: "json",
-          limit: "6",
-          addressdetails: "0",
-        });
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?${params}`,
-          { headers: { "Accept-Language": "en" } }
-        );
-        const data: NominatimResult[] = await res.json();
-        setResults(data);
-        setOpen(data.length > 0);
-      } catch {
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 400);
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") { e.preventDefault(); handleSearch(); }
+    if (e.key === "Escape") { setOpen(false); }
   }
 
   function handleSelect(result: NominatimResult) {
     const lng = parseFloat(result.lon);
     const lat = parseFloat(result.lat);
-    setQuery(result.display_name);
+    setQuery(result.display_name.split(",")[0]);
     setOpen(false);
     setResults([]);
-    // Use a sensible default zoom based on result type
     const zoom = ["country", "state", "county"].includes(result.type) ? 8 : 14;
     onSelect(lng, lat, zoom);
   }
@@ -86,28 +86,33 @@ export function GeocoderControl({ onSelect }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="absolute top-2 left-2 z-10 w-[min(18rem,calc(100%-1rem))]">
+    <div ref={containerRef} className={className ?? "absolute top-2 left-2 z-10 w-[min(18rem,calc(100%-1rem))]"} style={style}>
       <div className="relative flex items-center">
-        <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         <input
           type="text"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setOpen(true)}
           placeholder="Search places…"
-          className="w-full h-8 pl-8 pr-7 text-sm rounded-md border bg-background/95 shadow-sm backdrop-blur-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+          className={`w-full ${inputHeight} pl-3 pr-16 text-sm rounded-md border bg-background/95 shadow-sm backdrop-blur-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground`}
         />
-        {query && (
-          <button
-            onClick={clear}
-            className="absolute right-2 text-muted-foreground hover:text-foreground"
-          >
+        {/* Clear button */}
+        {query && !loading && (
+          <button onClick={clear} className="absolute right-8 text-muted-foreground hover:text-foreground transition-colors">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
-        {loading && (
-          <div className="absolute right-2 h-3.5 w-3.5 rounded-full border-2 border-muted-foreground border-t-transparent animate-spin" />
-        )}
+        {/* Search / spinner button */}
+        <button
+          onClick={handleSearch}
+          className="absolute right-0 h-full w-8 flex items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors border-l"
+          title="Search"
+        >
+          {loading
+            ? <div className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground border-t-transparent animate-spin" />
+            : <Search className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       {open && results.length > 0 && (

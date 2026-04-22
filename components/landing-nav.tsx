@@ -16,8 +16,8 @@ export function LandingNav({ fontClass }: { fontClass: string }) {
     <header className="lp-nav">
       <div className="lp-nav-logo">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/Postgresql_elephant.png" alt="" style={{ width: 18, height: 18, opacity: 0.85 }} />
-        PostGIS<span className="lp-nav-logo-dot">·</span>Frontend
+        <img src="/Postgresql_elephant.png" alt="" style={{ width: 26, height: 26, opacity: 0.85 }} />
+        PostGIS Frontend
       </div>
 
       {/* Desktop links */}

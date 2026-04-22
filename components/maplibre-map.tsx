@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { GeocoderControl } from "@/components/geocoder-control";
 import { MapLegend } from "@/components/map-legend";
 import type { MapLayer, LayerControl } from "@/lib/types";
+import { Plus, Minus, Navigation, Home, Maximize2, Minimize2 } from "lucide-react";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function hexToRgb(hex: string): [number, number, number] {
@@ -115,6 +116,7 @@ export interface MapView { longitude: number; latitude: number; zoom: number; }
 interface Props {
   layers: MapLayer[];
   onUpdateLayer?: (id: string, patch: Partial<MapLayer>) => void;
+  shareControls?: boolean;
   flyTo?: ZoomTarget | null;
   basemap?: string;
   initialView?: MapView;
@@ -137,7 +139,7 @@ function PropValue({ value }: { value: string }) {
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
-export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideLegend, hideGeocoder, hideZoom }: Props) {
+export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideLegend, hideGeocoder, hideZoom, shareControls }: Props) {
   const mapRef = React.useRef<any>(null);
   const overlay = React.useMemo(() => new MapboxOverlay({ interleaved: false }), []);
 
@@ -145,6 +147,22 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
   const [selectionIdx, setSelectionIdx] = React.useState(0);
   const [isPropsOpen, setIsPropsOpen] = React.useState(false);
   const [zoom, setZoom] = React.useState(4);
+  const [bearing, setBearing] = React.useState(0);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+
+  React.useEffect(() => {
+    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
 
   const mapStyle = React.useMemo(
     () => (basemap && basemap in BASEMAPS ? BASEMAPS[basemap] : BLANK_STYLE) as any,
@@ -311,10 +329,12 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
         onLoad={onLoad}
         reuseMaps
         onZoom={(e) => setZoom(e.viewState.zoom)}
+        onRotate={(e) => setBearing(e.viewState.bearing ?? 0)}
         initialViewState={initialView ?? { longitude: -98.5556199, latitude: 39.8097343, zoom: 4 }}
         onMoveEnd={(e) => onViewChange?.({ longitude: e.viewState.longitude, latitude: e.viewState.latitude, zoom: e.viewState.zoom })}
         style={{ width: "100%", height: "100%" }}
         mapStyle={mapStyle}
+        attributionControl={{ compact: true, customAttribution: "" }}
       />
 
       {!hideZoom && (
@@ -323,12 +343,54 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
         </div>
       )}
 
-      {!hideGeocoder && (
+      {!hideGeocoder && !shareControls && (
         <GeocoderControl
           onSelect={(lng, lat, zoom) => {
             mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom });
           }}
         />
+      )}
+
+      {shareControls && (
+        <>
+          {/* Top row: zoom buttons + geocoder */}
+          <div className="absolute z-10 flex items-start gap-1.5" style={{ top: 52, left: 8 }}>
+            {/* Zoom +/- */}
+            <div className="flex flex-col shrink-0">
+              <button title="Zoom in" onClick={() => mapRef.current?.getMap().zoomIn()}
+                className="w-10 h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border border-b-0 rounded-t-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+                <Plus className="h-5 w-5" />
+              </button>
+              <button title="Zoom out" onClick={() => mapRef.current?.getMap().zoomOut()}
+                className="w-10 h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-b-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+                <Minus className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Geocoder */}
+            <GeocoderControl
+              className="w-[min(16rem,calc(100vw-88px))] z-10"
+              inputHeight="h-10"
+              onSelect={(lng, lat, zoom) => mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom })}
+            />
+          </div>
+
+          {/* Secondary controls: compass + home (horizontal, below zoom buttons) */}
+          <div className="absolute z-10 flex flex-col gap-0.5" style={{ top: 138, left: 8 }}>
+            {[
+              { title: "Reset north", icon: <Navigation className="h-4 w-4" style={{ transform: `rotate(${-bearing}deg)`, transition: "transform 0.2s" }} />, onClick: () => mapRef.current?.getMap().easeTo({ bearing: 0, pitch: 0, duration: 300 }) },
+              { title: "Home", icon: <Home className="h-4 w-4" />, onClick: () => {
+                const iv = initialView ?? { longitude: -98.5556199, latitude: 39.8097343, zoom: 4 };
+                mapRef.current?.getMap().flyTo({ center: [iv.longitude, iv.latitude], zoom: iv.zoom, bearing: 0, pitch: 0 });
+              }},
+            ].map(({ title, icon, onClick }, i, arr) => (
+              <button key={title} onClick={onClick} title={title}
+                className={`w-8 h-8 flex items-center justify-center bg-background/95 backdrop-blur-sm border hover:bg-background transition-colors text-muted-foreground hover:text-foreground ${i === 0 ? "rounded-md" : "border-l-0 rounded-md"}`}>
+                {icon}
+              </button>
+            ))}
+          </div>
+
+        </>
       )}
 
       {!hideLegend && (
