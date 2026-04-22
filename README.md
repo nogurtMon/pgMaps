@@ -117,7 +117,7 @@ git pull && docker compose down && docker compose up -d --build
 | Variable | Required | Description |
 |---|---|---|
 | `DSN_ENCRYPTION_KEY` | Yes (production) | 64 hex chars. Encrypts database connection strings at rest. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `APP_PASSWORD` | Recommended | Password to access the app. Share links at `/share/[id]` remain public regardless. If unset, no auth is required. |
+| `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |
 | `SHOW_LANDING_PAGE` | No | If set, `/` shows the marketing landing page. Otherwise `/` redirects to `/map`. |
