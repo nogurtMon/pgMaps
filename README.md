@@ -44,7 +44,6 @@ cp .env.example .env
 
 Open `.env` in any text editor and fill in `POSTGRES_URL` and `APP_PASSWORD`.
 
-> `DSN_ENCRYPTION_KEY` is optional here — a key is auto-generated on first run and persisted to `.dsn-dev-key`. If you deploy to Vercel, you will need to set it explicitly since Vercel has no persistent filesystem.
 
 **3. Run**
 
@@ -101,7 +100,6 @@ POSTGRES_URL=postgres://user:password@host:5432/dbname
 APP_PASSWORD=yourpassword
 ```
 
-> `DSN_ENCRYPTION_KEY` is optional here — a key is auto-generated on first run and saved to `.dsn-dev-key`.
 
 **3. Start the dev server**
 
