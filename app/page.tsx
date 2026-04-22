@@ -1028,7 +1028,7 @@ export default function LandingPage() {
             Your spatial data deserves to be seen.
           </h2>
           <p style={{fontFamily:'var(--font-sans)', fontSize:16, color:'var(--body)', fontWeight:300, marginBottom:40}}>
-            Create and share maps with clients, stakeholders or anyone. Open-source, self-hosted, and ready in minutes.
+            Create and share live maps with clients, stakeholders or anyone. Open-source, self-hosted, and ready in minutes.
           </p>
           <div className="lp-hero-ctas" style={{animation:'none'}}>
             <a href={VERCEL_URL} target="_blank" rel="noopener noreferrer" className="lp-btn-primary">
