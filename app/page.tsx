@@ -978,7 +978,7 @@ export default function LandingPage() {
             <div className="lp-loom-text">
               <div className="lp-loom-eyebrow">Walkthrough · 2 min</div>
               <div className="lp-loom-title">See the full workflow in action</div>
-              <div className="lp-loom-sub">Import, style, and share a live map — start to finish.</div>
+              <div className="lp-loom-sub">How to create and share a live map — start to finish.</div>
             </div>
             <div className="lp-loom-arrow">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
