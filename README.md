@@ -46,13 +46,14 @@ cp .env.example .env.local   # or create it manually
 Open `.env.local` and fill in your values:
 
 ```env
-# Required — Postgres connection string for the app's own storage.
-# The app creates its tables automatically on first run.
-# Example: postgres://user:password@localhost:5432/mydb
+# Required — Postgres connection string for the app's own storage
+# (encrypted connection strings and saved map views).
+# This can be the same PostgreSQL instance your PostGIS data lives on,
+# or a separate one — your call.
 POSTGRES_URL=postgres://user:password@host:5432/dbname
 
-# Optional — Password to access the app.
-# If unset, no login is required.
+# Strongly recommended — password to access the app at /map.
+# Without it, anyone who finds the URL can read and write to your PostGIS databases.
 # Share links at /share/[id] remain public regardless.
 APP_PASSWORD=yourpassword
 ```
@@ -115,7 +116,7 @@ git pull && docker compose down && docker compose up -d --build
 
 | Variable | Required | Description |
 |---|---|---|
-| `DSN_ENCRYPTION_KEY` | Yes (production) | 64 hex chars. Encrypts database connection strings at rest. |
+| `DSN_ENCRYPTION_KEY` | Yes (production) | 64 hex chars. Encrypts database connection strings at rest. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_PASSWORD` | Recommended | Password to access the app. Share links at `/share/[id]` remain public regardless. If unset, no auth is required. |
 | `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |
