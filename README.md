@@ -101,12 +101,15 @@ git clone https://github.com/nogurtMon/postgis-frontend.git
 cd postgis-frontend
 ```
 
-Create a `.env` file with your values:
+```bash
+cp .env.example .env
+nano .env
+```
+
+Fill in `POSTGRES_URL`, `APP_PASSWORD`, and generate a value for `DSN_ENCRYPTION_KEY` with:
 
 ```bash
-node -e "console.log('DSN_ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))" > .env
-echo "APP_PASSWORD=yourpassword" >> .env
-echo "POSTGRES_URL=postgres://user:pass@host:5432/dbname" >> .env
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 **3. Run**
