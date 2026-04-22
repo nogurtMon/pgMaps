@@ -992,8 +992,23 @@ export default function LandingPage() {
           <h2 className="lp-h2 lp-reveal">Up and running before<br />your coffee gets cold.</h2>
 
           <div className="lp-deploy-grid lp-reveal">
+            <div className="lp-deploy-card" style={{borderColor:'var(--pg-mid)'}}>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+                <div className="lp-deploy-step" style={{margin:0}}>Option 01</div>
+                <span style={{fontFamily:'var(--font-mono)', fontSize:10, color:'var(--pg-hi)', background:'rgba(98,176,232,0.12)', border:'1px solid rgba(98,176,232,0.25)', borderRadius:99, padding:'2px 9px', letterSpacing:'0.06em'}}>Recommended</span>
+              </div>
+              <h3>Docker</h3>
+              <p>Run anywhere with a single command. No dependencies, no configuration — just Docker.</p>
+              <div className="lp-deploy-cmd">docker compose up -d --build</div>
+              <div style={{marginTop:14}}>
+                <a href="https://github.com/nogurtMon/postgis-frontend#docker" target="_blank" rel="noopener noreferrer" style={{fontFamily:'var(--font-mono)', fontSize:11, color:'var(--pg-hi)', textDecoration:'none'}}>
+                  Setup instructions ↗
+                </a>
+              </div>
+            </div>
+
             <div className="lp-deploy-card">
-              <div className="lp-deploy-step">Option 01</div>
+              <div className="lp-deploy-step">Option 02</div>
               <h3>Vercel</h3>
               <p>One-click deploy. Connect your PostGIS instance and go live instantly.</p>
               <div style={{marginTop:16}}>
@@ -1005,17 +1020,15 @@ export default function LandingPage() {
             </div>
 
             <div className="lp-deploy-card">
-              <div className="lp-deploy-step">Option 02</div>
-              <h3>Docker</h3>
-              <p>Spin up a full stack locally with a single command. Batteries included.</p>
-              <div className="lp-deploy-cmd">docker compose up -d</div>
-            </div>
-
-            <div className="lp-deploy-card">
               <div className="lp-deploy-step">Option 03</div>
-              <h3>Node</h3>
-              <p>Classic install for any server or cloud VM. Works wherever Node runs.</p>
-              <div className="lp-deploy-cmd">npm install &amp;&amp; npm start</div>
+              <h3>Local / Node</h3>
+              <p>Classic install for any server or cloud VM. Works wherever Node.js runs.</p>
+              <div className="lp-deploy-cmd">npm install &amp;&amp; npm run dev</div>
+              <div style={{marginTop:14}}>
+                <a href="https://github.com/nogurtMon/postgis-frontend#local-development" target="_blank" rel="noopener noreferrer" style={{fontFamily:'var(--font-mono)', fontSize:11, color:'var(--pg-hi)', textDecoration:'none'}}>
+                  Setup instructions ↗
+                </a>
+              </div>
             </div>
           </div>
         </section>

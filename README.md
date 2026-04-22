@@ -11,19 +11,9 @@
 - Visualize large spatial datasets
 - Share live maps with anyone
 
-## Features
-
-- **Import** — upload GeoJSON, Shapefile (.shp), CSV, KML, GeoPackage, and other spatial formats directly into PostGIS as new tables or automatically scrape any ArcGIS Feature Server into PostGIS with a single URL
-- **Visualize** — render points, lines, and polygons as vector tile layers on an interactive map
-- **Style** — per-layer fill, stroke, opacity, radius; categorical, threshold, and numeric color rules
-- **Filter** — attribute, temporal, numeric range, and categorical controls; filters are applied server-side at tile query time
-- **Share** — generate public read-only share links that embed your layers, styles, and active filters into an interactive view of your GIS data
-- **Attribute table** — browse, search, sort, and filter any layer's data; zoom the map directly to any individual feature
-- **Table management** — create spatial indexes, assign SRIDs, add primary keys, cast geometry types, and cluster tables for improved tile performance
-
 ---
 
-## Deploy
+# Self Hosting
 
 ---
 
@@ -60,16 +50,13 @@ Open `.env.local` and fill in your values:
 # or a separate one — your call.
 POSTGRES_URL=postgres://user:password@host:5432/dbname
 
-# Required — 64-character hex key that encrypts stored database connection strings.
-# Generate one with:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-DSN_ENCRYPTION_KEY=your64hexkey
-
 # Strongly recommended — password to access the app at /map.
 # Without it, anyone who finds the URL can read and write to your PostGIS databases.
 # Share links at /share/[id] remain public regardless.
 APP_PASSWORD=yourpassword
 ```
+
+> `DSN_ENCRYPTION_KEY` is auto-generated and saved to `.dsn-dev-key` on first run — no action needed locally.
 
 **3. Start the dev server**
 
@@ -106,11 +93,9 @@ cp .env.example .env
 nano .env
 ```
 
-Fill in `POSTGRES_URL`, `APP_PASSWORD`, and generate a value for `DSN_ENCRYPTION_KEY` with:
+Fill in `POSTGRES_URL` and `APP_PASSWORD`.
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+> `DSN_ENCRYPTION_KEY` is auto-generated and persisted to `.dsn-dev-key` on first run — no action needed.
 
 **3. Run**
 
@@ -130,7 +115,7 @@ git pull && docker compose down && docker compose up -d --build
 
 | Variable | Required | Description |
 |---|---|---|
-| `DSN_ENCRYPTION_KEY` | Yes | 64 hex chars. Encrypts database connection strings at rest. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `DSN_ENCRYPTION_KEY` | Yes (Vercel) | 64 hex chars. Encrypts database connection strings at rest. Auto-generated locally and in Docker. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |

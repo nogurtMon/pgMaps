@@ -4,7 +4,9 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     environment:
-      - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY}
+      - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY:-}
       - APP_PASSWORD=${APP_PASSWORD}
       - POSTGRES_URL=${POSTGRES_URL}
+    volumes:
+      - ./.dsn-dev-key:/app/.dsn-dev-key
     restart: unless-stopped
