@@ -27,6 +27,14 @@
 
 ---
 
+### Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nogurtMon/postgis-frontend&env=DSN_ENCRYPTION_KEY,APP_PASSWORD,POSTGRES_URL&envDescription=DSN_ENCRYPTION_KEY%3A%20run%20%60node%20-e%20%22console.log(require('crypto').randomBytes(32).toString('hex'))%22%60%20to%20generate.%20APP_PASSWORD%3A%20password%20to%20access%20the%20app.%20POSTGRES_URL%3A%20Postgres%20connection%20string%20for%20app%20storage%20%E2%80%94%20create%20a%20free%20database%20at%20neon.tech.&envLink=https://github.com/nogurtMon/postgis-frontend%23environment-variables)
+
+The fastest way to get started. Click the button, fill in your three environment variables, and Vercel handles the rest — no server required. You'll need a PostgreSQL database; [Neon](https://neon.tech) offers a free tier that works out of the box.
+
+---
+
 ### Local development
 
 **1. Clone and install**
@@ -52,13 +60,16 @@ Open `.env.local` and fill in your values:
 # or a separate one — your call.
 POSTGRES_URL=postgres://user:password@host:5432/dbname
 
+# Required — 64-character hex key that encrypts stored database connection strings.
+# Generate one with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+DSN_ENCRYPTION_KEY=your64hexkey
+
 # Strongly recommended — password to access the app at /map.
 # Without it, anyone who finds the URL can read and write to your PostGIS databases.
 # Share links at /share/[id] remain public regardless.
 APP_PASSWORD=yourpassword
 ```
-
-> `DSN_ENCRYPTION_KEY` is **not needed locally** — a temporary key is auto-generated on startup.
 
 **3. Start the dev server**
 
@@ -67,12 +78,6 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
-
----
-
-### Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nogurtMon/postgis-frontend&env=DSN_ENCRYPTION_KEY,APP_PASSWORD,POSTGRES_URL&envDescription=DSN_ENCRYPTION_KEY%3A%20run%20%60node%20-e%20%22console.log(require('crypto').randomBytes(32).toString('hex'))%22%60%20to%20generate.%20APP_PASSWORD%3A%20password%20to%20access%20the%20app.%20POSTGRES_URL%3A%20Postgres%20connection%20string%20for%20app%20storage%20%E2%80%94%20create%20a%20free%20database%20at%20neon.tech.&envLink=https://github.com/nogurtMon/postgis-frontend%23environment-variables)
 
 ---
 
@@ -116,7 +121,7 @@ git pull && docker compose down && docker compose up -d --build
 
 | Variable | Required | Description |
 |---|---|---|
-| `DSN_ENCRYPTION_KEY` | Yes (production) | 64 hex chars. Encrypts database connection strings at rest. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `DSN_ENCRYPTION_KEY` | Yes | 64 hex chars. Encrypts database connection strings at rest. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `POSTGRES_URL` | Required | Postgres connection string for the app's own storage (connections, saved views). The app creates its tables automatically on first request.|
 | `PORT` | No | Default: `3000`. Docker only. |
