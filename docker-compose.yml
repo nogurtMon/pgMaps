@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY:-}
       - APP_PASSWORD=${APP_PASSWORD}
