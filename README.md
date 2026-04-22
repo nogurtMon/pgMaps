@@ -31,27 +31,15 @@
   ```
   > `newgrp docker` applies the group change to your current session. Log out and back in to make it permanent.
 
-**2. Clone and configure**
+**2. Clone and run**
 
 ```bash
-git clone https://github.com/nogurtMon/postgis-frontend.git
-cd postgis-frontend
+git clone https://github.com/nogurtMon/postgis-frontend.git && cd postgis-frontend && docker compose up -d --build
 ```
 
-```bash
-cp .env.example .env
-```
+Open `http://localhost:3000`.
 
-Open `.env` and fill in `APP_PASSWORD` and `DSN_ENCRYPTION_KEY`. `POSTGRES_URL` is handled automatically by the bundled database.
-
-
-**3. Run**
-
-```bash
-docker compose up -d --build
-```
-
-Open `http://localhost:3000`. To use a different port, add `PORT=8080` (or any port) to your `.env` file.
+> By default the app has no password — anyone with the URL can use it. To require a password, create a `.env` file with `APP_PASSWORD=yourpassword`. To use a different port, add `PORT=8080`.
 
 **Update:**
 
