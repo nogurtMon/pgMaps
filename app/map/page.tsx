@@ -10,7 +10,7 @@ import type { TableRow, MapLayer } from "@/lib/types";
 import type { ZoomTarget, MapView } from "@/components/maplibre-map";
 
 import { Button } from "@/components/ui/button";
-import { Map, Database, Github, Bug } from "lucide-react";
+import { Map, Database, Github, Bug, Lightbulb } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { SavedViewsDialog } from "@/components/saved-views-dialog";
 import { BASEMAP_OPTIONS } from "@/lib/types";
@@ -165,6 +165,11 @@ export default function Home() {
 
         <div className="flex items-center gap-1 shrink-0">
           <ModeToggle />
+          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="Request a feature">
+            <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=feature_request.md" target="_blank" rel="noopener noreferrer">
+              <Lightbulb className="h-3.5 w-3.5" />
+            </a>
+          </Button>
           <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="Report a bug">
             <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=bug_report.md" target="_blank" rel="noopener noreferrer">
               <Bug className="h-3.5 w-3.5" />
