@@ -105,36 +105,25 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           flyTo={flyTo}
           hideLegend
           hideZoom
-          shareControls={!isEmbed}
+          shareControls
         />
 
-        {!isEmbed && (
-          <ShareMapBar
-            mapName={mapName}
-            layers={layers}
-            basemap={basemap}
-            onSetBasemap={setBasemap}
-            onUpdateLayer={updateLayer}
-            onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}
-            onFlyTo={(bounds) => setFlyTo({ bounds })}
-          />
-        )}
+        <ShareMapBar
+          mapName={mapName}
+          layers={layers}
+          basemap={basemap}
+          onSetBasemap={setBasemap}
+          onUpdateLayer={updateLayer}
+          onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}
+          onFlyTo={(bounds) => setFlyTo({ bounds })}
+        />
 
-        {/* Fullscreen toggle — bottom right */}
+        {/* Fullscreen toggle — bottom right (hidden in iframes) */}
         {!isEmbed && (
           <button onClick={toggleFullscreen} title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
             className="absolute bottom-10 right-2 z-20 w-9 h-9 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
             {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
           </button>
-        )}
-
-        {/* Minimal title for embed mode */}
-        {isEmbed && mapName && (
-          <div className="absolute top-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
-            <span className="bg-background/80 backdrop-blur-sm border rounded-md px-2.5 py-1 text-[11px] font-semibold shadow-sm whitespace-nowrap overflow-hidden text-ellipsis inline-block max-w-full">
-              {mapName}
-            </span>
-          </div>
         )}
       </div>
     </div>
