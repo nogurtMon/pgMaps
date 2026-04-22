@@ -31,7 +31,7 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nogurtMon/postgis-frontend&env=DSN_ENCRYPTION_KEY,APP_PASSWORD,POSTGRES_URL&envDescription=DSN_ENCRYPTION_KEY%3A%20run%20%60node%20-e%20%22console.log(require('crypto').randomBytes(32).toString('hex'))%22%60%20to%20generate.%20APP_PASSWORD%3A%20password%20to%20access%20the%20app.%20POSTGRES_URL%3A%20Postgres%20connection%20string%20for%20app%20storage%20%E2%80%94%20create%20a%20free%20database%20at%20neon.tech.&envLink=https://github.com/nogurtMon/postgis-frontend%23environment-variables)
 
-The fastest way to get started. Click the button, fill in your three environment variables, and Vercel handles the rest — no server required. You'll need a PostgreSQL database; [Neon](https://neon.tech) offers a free tier that works out of the box.
+The fastest way to get started. Click the button, fill in your three environment variables, and Vercel handles the rest. You'll need a PostgreSQL database; Neon offers a free tier that works out of the box.
 
 ---
 
