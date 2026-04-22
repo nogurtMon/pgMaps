@@ -352,44 +352,41 @@ export default function MaplibreMap({ layers, flyTo, basemap = "", initialView, 
       )}
 
       {shareControls && (
-        <>
-          {/* Top row: zoom buttons + geocoder */}
-          <div className="absolute z-10 flex items-start gap-1 md:gap-1.5 top-[52px] left-2">
-            {/* Zoom +/- */}
-            <div className="flex flex-col shrink-0">
-              <button title="Zoom in" onClick={() => mapRef.current?.getMap().zoomIn()}
-                className="w-7 h-7 md:w-10 md:h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border border-b-0 rounded-t-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
-                <Plus className="h-3.5 w-3.5 md:h-5 md:w-5" />
-              </button>
-              <button title="Zoom out" onClick={() => mapRef.current?.getMap().zoomOut()}
-                className="w-7 h-7 md:w-10 md:h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-b-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
-                <Minus className="h-3.5 w-3.5 md:h-5 md:w-5" />
-              </button>
-            </div>
-            {/* Geocoder */}
+        <div className="absolute z-10 flex items-start gap-1 md:gap-1.5 top-[52px] left-2">
+          {/* Zoom +/- */}
+          <div className="flex flex-col shrink-0">
+            <button title="Zoom in" onClick={() => mapRef.current?.getMap().zoomIn()}
+              className="w-7 h-7 md:w-10 md:h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border border-b-0 rounded-t-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+              <Plus className="h-3.5 w-3.5 md:h-5 md:w-5" />
+            </button>
+            <button title="Zoom out" onClick={() => mapRef.current?.getMap().zoomOut()}
+              className="w-7 h-7 md:w-10 md:h-10 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-b-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+              <Minus className="h-3.5 w-3.5 md:h-5 md:w-5" />
+            </button>
+          </div>
+
+          {/* Geocoder + compass/home stacked below it */}
+          <div className="flex flex-col gap-1">
             <GeocoderControl
               className="w-[min(9rem,calc(100vw-64px))] md:w-[min(16rem,calc(100vw-88px))] z-10"
               inputHeight="h-7 md:h-10"
               onSelect={(lng, lat, zoom) => mapRef.current?.getMap().flyTo({ center: [lng, lat], zoom })}
             />
-          </div>
-
-          {/* Secondary controls: compass + home */}
-          <div className="absolute z-10 flex top-[106px] md:top-[136px] left-2">
-            {[
-              { title: "Reset north", icon: <Navigation className="h-3.5 w-3.5 md:h-4 md:w-4" style={{ transform: `rotate(${-bearing}deg)`, transition: "transform 0.2s" }} />, onClick: () => mapRef.current?.getMap().easeTo({ bearing: 0, pitch: 0, duration: 300 }) },
-              { title: "Home", icon: <Home className="h-3.5 w-3.5 md:h-4 md:w-4" />, onClick: () => {
+            <div className="flex gap-1">
+              <button title="Reset north" onClick={() => mapRef.current?.getMap().easeTo({ bearing: 0, pitch: 0, duration: 300 })}
+                className="w-6 h-6 md:w-7 md:h-7 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+                <Navigation className="h-3 w-3 md:h-3.5 md:w-3.5" style={{ transform: `rotate(${-bearing}deg)`, transition: "transform 0.2s" }} />
+              </button>
+              <button title="Home" onClick={() => {
                 const iv = initialView ?? { longitude: -98.5556199, latitude: 39.8097343, zoom: 4 };
                 mapRef.current?.getMap().flyTo({ center: [iv.longitude, iv.latitude], zoom: iv.zoom, bearing: 0, pitch: 0 });
-              }},
-            ].map(({ title, icon, onClick }, i) => (
-              <button key={title} onClick={onClick} title={title}
-                className={`w-7 h-6 md:w-10 md:h-8 flex items-center justify-center bg-background/95 backdrop-blur-sm border hover:bg-background transition-colors text-muted-foreground hover:text-foreground ${i === 0 ? "rounded-l-md" : "border-l-0 rounded-r-md"}`}>
-                {icon}
+              }}
+                className="w-6 h-6 md:w-7 md:h-7 flex items-center justify-center bg-background/95 backdrop-blur-sm border rounded-md hover:bg-background transition-colors text-muted-foreground hover:text-foreground">
+                <Home className="h-3 w-3 md:h-3.5 md:w-3.5" />
               </button>
-            ))}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {!hideLegend && (

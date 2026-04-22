@@ -9,6 +9,10 @@ import Link from "next/link";
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function fmtCol(col: string) { return col.replace(/_/g, " ").toUpperCase(); }
 
+function toTitleCase(name: string): string {
+  return name.replace(/[_\-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function getControlLabel(c: LayerControl): string {
   if ("label" in c && c.label) return c.label;
   switch (c.type) {
@@ -40,7 +44,7 @@ function GeomSwatch({ layer }: { layer: MapLayer }) {
   const stroke = layer.style?.strokeColor ?? "#ffffff";
   if (kind === "line") return (
     <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
-      <line x1="1" y1="7" x2="13" y2="7" stroke={fill} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="1" y1="7" x2="13" y2="7" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
   if (kind === "polygon") return (
@@ -308,11 +312,12 @@ function LegendPanel({ layers }: { layers: MapLayer[] }) {
         const thrControl = (layer.controls ?? []).find(
           c => c.type === "threshold" && c.enabled && c.shared
         ) as Extract<LayerControl, { type: "threshold" }> | undefined;
+        const hasCatFill = catControl && catControl.target === "fill" && catControl.rules.length > 0;
         return (
           <div key={layer.id} className={`space-y-1 ${!layer.visible ? "opacity-40" : ""}`}>
             <div className="flex items-center gap-2">
-              <GeomSwatch layer={layer} />
-              <span className="text-[11px] font-medium truncate">{layer.table.table_name}</span>
+              {!hasCatFill && <GeomSwatch layer={layer} />}
+              <span className="text-[11px] font-medium truncate" title={layer.table.table_name}>{toTitleCase(layer.table.table_name)}</span>
             </div>
             {catControl && catControl.rules.length > 0 && (
               <div className="pl-5 space-y-0.5">
@@ -393,8 +398,7 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
                 return next;
               })}
             >
-              <GeomSwatch layer={layer} />
-              <span className="text-[11px] font-medium truncate flex-1">{layer.table.table_name}</span>
+              <span className="text-[11px] font-medium truncate flex-1" title={layer.table.table_name}>{toTitleCase(layer.table.table_name)}</span>
               <button onClick={e => { e.stopPropagation(); handleZoom(layer); }}
                 className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5" title="Zoom to extent">
                 <Locate className="h-5 w-5" />
