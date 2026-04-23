@@ -836,11 +836,11 @@ export default function LandingPage() {
           </div>
 
           <h1 className="lp-h1">
-           The missing frontend for <em>PostGIS databases</em>
+           Cloud-native frontend for <em>PostGIS databases</em>
           </h1>
 
           <p className="lp-hero-sub">
-            Import any spatial format, render millions of features and share live maps—no account required.
+            Import data from any spatial format into PostGIS, render millions of features and share live maps—all from one open-source, self-hosted web interface.
           </p>
 
           <div className="lp-hero-ctas">
@@ -945,9 +945,9 @@ export default function LandingPage() {
         {/* ── LIVE DEMO ── */}
         <section id="demo" className="lp-section" style={{paddingTop: 0}}>
           <span className="lp-label lp-reveal">Live Demo</span>
-          <h2 className="lp-h2 lp-reveal">Interactive maps, streamed live from PostGIS.</h2>
+          <h2 className="lp-h2 lp-reveal">Share live, interactive maps with anyone.</h2>
           <p className="lp-reveal" style={{marginTop:12, fontFamily:'var(--font-sans)', fontSize:15, color:'var(--body)', fontWeight:300}}>
-            Create and share live, interactive maps—in minutes.
+            When you update PostGIS, shared maps update automatically—no need to redeploy.
           </p>
 
           <div className="lp-demo-frame lp-reveal">
@@ -1038,7 +1038,7 @@ export default function LandingPage() {
           <div className="lp-cta-glow" />
           <span className="lp-label" style={{justifyContent:'center',display:'flex'}}>Get started</span>
           <h2 className="lp-h2" style={{margin:'0 auto 16px', maxWidth:480, textAlign:'center'}}>
-            Let your spatial data be seen.
+            Share your spatial insights with the world.
           </h2>
           <p style={{fontFamily:'var(--font-sans)', fontSize:16, color:'var(--body)', fontWeight:300, marginBottom:40}}>
             Create and share live maps with clients, colleagues or anyone.
