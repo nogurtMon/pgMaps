@@ -17,7 +17,7 @@ const FEATURES = [
   {
     icon: "⚡",
     title: "Render millions of features",
-    desc: "Server-side vector tile layers keep your maps snappy at any scale.",
+    desc: "Server-side vector tile layers keep your maps fast at any scale.",
     tags: [],
   },
   {
@@ -29,7 +29,7 @@ const FEATURES = [
   {
     icon: "🔗",
     title: "Share live maps",
-    desc: "Stream your PostGIS data to public interactive maps.",
+    desc: "Stream your PostGIS data to live, interactive maps that anyone can view.",
     tags: [],
   },
   {
