@@ -22,7 +22,7 @@ const FEATURES = [
   },
   {
     icon: "🎨",
-    title: "Style & filter with precision",
+    title: "Style & filter layers",
     desc: "Fill, stroke, opacity and radius. Categorical, threshold, and numeric color rules.",
     tags: [],
   },
@@ -836,11 +836,11 @@ export default function LandingPage() {
           </div>
 
           <h1 className="lp-h1">
-            Your PostGIS data,<br /><em>beautifully mapped.</em>
+           The missing frontend for <em>PostGIS databases</em>
           </h1>
 
           <p className="lp-hero-sub">
-            Import spatial data from any format, render it at massive scale and share live maps — no account required.
+            Import any spatial format, render at scale and share live maps—no account required.
           </p>
 
           <div className="lp-hero-ctas">
@@ -947,7 +947,7 @@ export default function LandingPage() {
           <span className="lp-label lp-reveal">Live Demo</span>
           <h2 className="lp-h2 lp-reveal">Interactive maps, streamed live from PostGIS.</h2>
           <p className="lp-reveal" style={{marginTop:12, fontFamily:'var(--font-sans)', fontSize:15, color:'var(--body)', fontWeight:300}}>
-            No login. Fast setup. A live map built with PostGIS Frontend, showing what your data could look like in minutes.
+            Create and share maps like this—in minutes.
           </p>
 
           <div className="lp-demo-frame lp-reveal">
@@ -989,7 +989,7 @@ export default function LandingPage() {
         {/* ── DEPLOY ── */}
         <section id="deploy" className="lp-section">
           <span className="lp-label lp-reveal">Self-host in minutes</span>
-          <h2 className="lp-h2 lp-reveal">Up and running before<br />your coffee gets cold.</h2>
+          <h2 className="lp-h2 lp-reveal">Three ways to deploy.</h2>
 
           <div className="lp-deploy-grid lp-reveal">
             <div className="lp-deploy-card" style={{borderColor:'var(--pg-mid)'}}>

@@ -15,8 +15,6 @@
 
 # Self Hosting
 
----
-
 ### Docker
 
 **Requirements:** Docker
@@ -88,7 +86,6 @@ POSTGRES_URL=postgres://user:password@host:5432/dbname
 APP_PASSWORD=yourpassword
 ```
 
-
 **3. Start the dev server**
 
 ```bash
@@ -101,7 +98,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Variable | Required | Description |
 |---|---|---|
-| `DSN_ENCRYPTION_KEY` | Yes (Vercel) | 64 hex chars. Encrypts database connection strings at rest. Auto-generated locally and in Docker. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `DSN_ENCRYPTION_KEY` | Yes (Vercel) | 64 hex chars. Encrypts database connection strings at rest. Auto-generated in Docker. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `POSTGRES_URL` | Yes (Vercel / Local) | Postgres connection string for the app's own storage (connections, saved views). Auto-configured in Docker. The app creates its tables automatically on first request. |
 | `PORT` | No | Default: `3000`. Docker only. |
