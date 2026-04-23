@@ -947,7 +947,7 @@ export default function LandingPage() {
           <span className="lp-label lp-reveal">Live Demo</span>
           <h2 className="lp-h2 lp-reveal">Interactive maps, streamed live from PostGIS.</h2>
           <p className="lp-reveal" style={{marginTop:12, fontFamily:'var(--font-sans)', fontSize:15, color:'var(--body)', fontWeight:300}}>
-            Create and share maps like this—in minutes.
+            Create and share live, interactive maps—in minutes.
           </p>
 
           <div className="lp-demo-frame lp-reveal">
