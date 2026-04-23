@@ -1,12 +1,12 @@
 # <img src="public/Postgresql_elephant.png" height="32" align="center" />   PostGIS Frontend
 
-**An open-source web interface for PostGIS databases**. Import spatial data from any format into PostGIS, create live interactive maps and share them with anyone. Runs locally or self-hosted.
+**The open-source, cloud-native frontend for PostGIS.**
 
-![PostGIS Frontend screenshot](public/screenshot1.png)
+![PostGIS Frontend](public/postgis-frontend-demo-gif.gif)
 
-**Live Demo**
+**Live Demo** — [view live map](https://www.postgis-frontend.com/share/4a34704d-b51f-4fd5-9ab0-646e7a6335e3)
 
-[▶ See the full workflow in action](https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1) — how to create and share a live map, start to finish. (4 min)
+<a href="https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1" target="_blank">▶ See the full workflow in action</a> — how to create and share a live map, start to finish. (4 min)
 
 - Connect to any PostGIS database directly from the browser
 - Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)

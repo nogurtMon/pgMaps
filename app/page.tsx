@@ -10,7 +10,7 @@ const dmSans = DM_Sans({ subsets: ["latin"], weight: ["300", "400"], variable: "
 const FEATURES = [
   {
     icon: "📥",
-    title: "Import data from any format",
+    title: "Import spatial data from any format",
     desc: "One click loads your data straight into PostGIS — no preprocessing, no pipeline, no friction.",
     tags: ["GeoJSON", "Shapefile", "KML", "GeoPackage", "CSV", "XLSX", "ArcGIS URL"],
   },
