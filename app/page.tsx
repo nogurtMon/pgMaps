@@ -840,7 +840,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="lp-hero-sub">
-            Import any spatial format, render millions of features and share live maps—no account required.
+            Import any spatial format, render at scale and share live maps—no account required.
           </p>
 
           <div className="lp-hero-ctas">
