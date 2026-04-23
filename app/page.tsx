@@ -1038,7 +1038,7 @@ export default function LandingPage() {
           <div className="lp-cta-glow" />
           <span className="lp-label" style={{justifyContent:'center',display:'flex'}}>Get started</span>
           <h2 className="lp-h2" style={{margin:'0 auto 16px', maxWidth:480, textAlign:'center'}}>
-            Your spatial data deserves to be seen.
+            Let your spatial data be seen.
           </h2>
           <p style={{fontFamily:'var(--font-sans)', fontSize:16, color:'var(--body)', fontWeight:300, marginBottom:40}}>
             Create and share live maps with clients, colleagues or anyone.
