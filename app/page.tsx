@@ -836,7 +836,7 @@ export default function LandingPage() {
           </div>
 
           <h1 className="lp-h1">
-           Cloud-native frontend for <em>PostGIS databases</em>
+           The cloud-native frontend for <em>PostGIS databases</em>
           </h1>
 
           <p className="lp-hero-sub">
