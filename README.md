@@ -4,7 +4,7 @@
 
 ![PostGIS Frontend screenshot](public/screenshot1.png)
 
-[▶ Watch demo](https://www.loom.com/share/72ae683acdd145118e60f5eef6476930)
+[▶ Watch demo](https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1)
 
 - Connect to any PostGIS database directly from the browser
 - Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)

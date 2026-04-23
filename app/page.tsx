@@ -836,7 +836,7 @@ export default function LandingPage() {
           </div>
 
           <h1 className="lp-h1">
-           Cloud-native frontend for <em>PostGIS databases</em>
+           The cloud-native frontend for <em>PostGIS</em>
           </h1>
 
           <p className="lp-hero-sub">
@@ -961,14 +961,14 @@ export default function LandingPage() {
         {/* ── WALKTHROUGH ── */}
         <div className="lp-loom-wrap lp-reveal">
           <a
-            href="https://www.loom.com/share/72ae683acdd145118e60f5eef6476930"
+            href="https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1"
             target="_blank"
             rel="noopener noreferrer"
             className="lp-loom-card"
           >
             <div className="lp-loom-thumb">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="https://cdn.loom.com/sessions/thumbnails/72ae683acdd145118e60f5eef6476930-4145080d7e64ef96-full-play.gif#t=0.1" alt="Watch the walkthrough" />
+              <img src="https://cdn.loom.com/sessions/thumbnails/b970709d7b2e4c4e9d06bda12524a6c1-a4a23561b7eb7634-full-play.gif#t=0.1" alt="Watch the walkthrough" />
               <div className="lp-loom-play">
                 <div className="lp-loom-play-btn">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -976,7 +976,7 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="lp-loom-text">
-              <div className="lp-loom-eyebrow">Walkthrough · 2 min</div>
+              <div className="lp-loom-eyebrow">Walkthrough · 4 min</div>
               <div className="lp-loom-title">See the full workflow in action</div>
               <div className="lp-loom-sub">How to create and share a live map — start to finish.</div>
             </div>
