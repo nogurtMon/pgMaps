@@ -840,7 +840,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="lp-hero-sub">
-            Import data from any spatial format into PostGIS, render millions of features and share live maps—all from one open-source, self-hosted web interface.
+            Load data from any spatial format into PostGIS, render millions of features and share live maps—all from one open-source, self-hosted web interface.
           </p>
 
           <div className="lp-hero-ctas">
