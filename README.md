@@ -4,7 +4,9 @@
 
 ![PostGIS Frontend screenshot](public/screenshot1.png)
 
-[▶ Watch demo](https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1)
+**Live Demo**
+
+[▶ See the full workflow in action](https://www.loom.com/share/b970709d7b2e4c4e9d06bda12524a6c1) — how to create and share a live map, start to finish. (4 min)
 
 - Connect to any PostGIS database directly from the browser
 - Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
