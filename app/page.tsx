@@ -2,44 +2,41 @@ import { redirect } from "next/navigation";
 import { Syne, DM_Mono, DM_Sans } from "next/font/google";
 import { LandingNav } from "@/components/landing-nav";
 import Script from "next/script";
+import { Download, Zap, Paintbrush, Share2, Table, Database } from "lucide-react";
 
 const syne = Syne({ subsets: ["latin"], weight: ["400", "600", "700", "800"], variable: "--font-syne" });
 const dmMono = DM_Mono({ subsets: ["latin"], weight: ["300", "400"], variable: "--font-mono" });
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["300", "400"], variable: "--font-sans" });
 
+const FEATURE_ICONS = [Download, Zap, Paintbrush, Share2, Table, Database];
+
 const FEATURES = [
   {
-    icon: "📥",
     title: "Import spatial data from any format",
     desc: "One click loads your data straight into PostGIS — no preprocessing, no pipeline, no friction.",
     tags: ["GeoJSON", "Shapefile", "KML", "GeoPackage", "CSV", "XLSX", "ArcGIS URL"],
   },
   {
-    icon: "⚡",
     title: "Render millions of features",
     desc: "Server-side vector tile layers keep your maps fast at any scale.",
     tags: [],
   },
   {
-    icon: "🎨",
     title: "Style & filter layers",
     desc: "Fill, stroke, opacity and radius. Categorical, threshold, and numeric color rules.",
     tags: [],
   },
   {
-    icon: "🔗",
     title: "Share live maps",
     desc: "Stream your PostGIS data to live, interactive maps that anyone can view.",
     tags: [],
   },
   {
-    icon: "🗂️",
     title: "Explore your attributes",
     desc: "Browse, search, sort, and filter any layer's data table.",
     tags: [],
   },
   {
-    icon: "🛠️",
     title: "Table management included",
     desc: "Spatial indexes, SRIDs, primary keys, geometry casts, table clustering — all from a clean UI.",
     tags: [],
@@ -551,9 +548,10 @@ export default function LandingPage() {
         .lp-feature-card:hover::before { opacity: 1; }
 
         .lp-feature-icon {
-          font-size: 20px;
+          color: var(--pg-hi);
           margin-bottom: 14px;
           display: block;
+          line-height: 1;
         }
 
         .lp-feature-card h3 {
@@ -924,9 +922,11 @@ export default function LandingPage() {
           <h2 className="lp-h2 lp-reveal">Streamline common PostGIS workflows.</h2>
 
           <div className="lp-features-grid lp-reveal">
-            {FEATURES.map((f) => (
+            {FEATURES.map((f, i) => {
+              const Icon = FEATURE_ICONS[i];
+              return (
               <div key={f.title} className="lp-feature-card">
-                <span className="lp-feature-icon">{f.icon}</span>
+                <span className="lp-feature-icon"><Icon size={20} strokeWidth={1.5} /></span>
                 <h3>{f.title}</h3>
                 <p>{f.desc}</p>
                 {f.tags.length > 0 && (
@@ -937,7 +937,8 @@ export default function LandingPage() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
