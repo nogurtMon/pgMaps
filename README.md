@@ -6,7 +6,7 @@
 
 **Open-source web interface for PostGIS power users**
 
-🤖 AI-generated. Human quality control.
+🤖 AI generated. Human quality control.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -14,8 +14,8 @@
 
 </div>
 
-- Connect to multiple PostGIS databases from the browser
-- Streamline imports from common spatial formats (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
+- Connect to multiple PostGIS-enabled databases
+- Import data from common spatial formats (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
 - Visualize large spatial datasets with MVT tile serving
 - Create, edit, and delete features with full CRUD support
 - Share live maps with anyone via read-only links
@@ -35,16 +35,11 @@
   sudo usermod -aG docker $USER && newgrp docker
   ```
 
-**2. Get a MapTiler API key**
-
-Basemaps are served by [MapTiler](https://maptiler.com). Create a free account and copy your API key.
-
-**3. Clone, configure, and run**
+**2. Clone, configure, and run**
 
 ```bash
 git clone https://github.com/nogurtMon/postgis-frontend.git
 cd postgis-frontend
-echo "NEXT_PUBLIC_MAPTILER_KEY=your_key_here" > .env
 docker compose up -d --build
 ```
 
@@ -64,12 +59,9 @@ git pull && docker compose down && docker compose up -d --build
 
 | Variable | Required | Description |
 |---|---|---|
-| `NEXT_PUBLIC_MAPTILER_KEY` | Yes | MapTiler API key for basemap tiles. Get a free key at [maptiler.com](https://maptiler.com). |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `PORT` | No | Default: `3000`. |
 | `SHOW_LANDING_PAGE` | No | If set, `/` shows the marketing landing page. Otherwise `/` redirects to `/map`. |
-
-> `DSN_ENCRYPTION_KEY` and `POSTGRES_URL` are auto-configured by Docker Compose. Do not set them manually unless you know what you're doing.
 
 ---
 
