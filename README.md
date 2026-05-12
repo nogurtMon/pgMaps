@@ -4,7 +4,7 @@
 
 # PostGIS Frontend
 
-**A web interface for PostGIS power users**
+**Open-source web interface for PostGIS power users**
 
 🤖 🛑 Every line in this repo is reviewed by a human
 
@@ -12,13 +12,13 @@
 
 ![PostGIS Frontend](public/postgis-frontend-demo-gif.gif)
 
+</div>
+
 - Connect to multiple PostGIS databases from the browser
 - Streamline imports from common spatial formats (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
 - Visualize large spatial datasets with MVT tile serving
 - Create, edit, and delete features with full CRUD support
 - Share live maps with anyone via read-only links
-
-</div>
 
 ---
 
