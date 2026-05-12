@@ -80,14 +80,29 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
 
   const [name, setName] = React.useState("");
   const [fields, setFields] = React.useState<ConnFields>(EMPTY_FIELDS);
+  const [rawDsn, setRawDsn] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<"ok" | "fail" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   function setField<K extends keyof ConnFields>(k: K, v: ConnFields[K]) {
-    setFields((prev) => ({ ...prev, [k]: v }));
+    setFields((prev) => {
+      const next = { ...prev, [k]: v };
+      const assembled = fieldsToDsn(next);
+      if (assembled) setRawDsn(assembled);
+      return next;
+    });
     setTestResult(null);
+  }
+
+  function handleRawDsnChange(value: string) {
+    setRawDsn(value);
+    setTestResult(null);
+    if (/^postgres(?:ql)?:\/\//i.test(value)) {
+      const parsed = fieldsFromDsn(value);
+      if (parsed.host) setFields(parsed);
+    }
   }
 
   const dsn = fieldsToDsn(fields);
@@ -130,6 +145,7 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
     setEditingId(null);
     setName("");
     setFields(EMPTY_FIELDS);
+    setRawDsn("");
     setTestResult(null);
     setError(null);
   }
@@ -146,7 +162,9 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
       const res = await fetch(`/api/connections/${c.id}?dsn=1`);
       if (res.ok) {
         const data = await res.json();
-        setFields(fieldsFromDsn(data.dsn ?? ""));
+        const raw = data.dsn ?? "";
+        setRawDsn(raw);
+        setFields(fieldsFromDsn(raw));
       }
     } finally { setLoadingDsn(false); }
   }
@@ -317,6 +335,23 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
                   <Input id="conn-name" placeholder="My PostGIS DB" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
 
+                {/* Connection string (paste or assembled from fields) */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="conn-dsn">Connection string</Label>
+                  <Input
+                    id="conn-dsn"
+                    placeholder="postgresql://user:pass@host:5432/dbname"
+                    value={rawDsn}
+                    onChange={(e) => handleRawDsnChange(e.target.value)}
+                    className="font-mono text-[12px]"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Paste a connection string to auto-fill the fields below.</p>
+                </div>
+
+                <div className="border-t" />
+
                 {/* Host + Port */}
                 <div className="grid grid-cols-[1fr_100px] gap-3">
                   <div className="space-y-1.5">
@@ -363,14 +398,6 @@ export function ConnectionsDialog({ open, onOpenChange, activeConnectionId, onSe
                         Enable SSL
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {/* Connection string preview */}
-                {dsn && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Connection string</p>
-                    <p className="font-mono text-[11px] bg-muted rounded px-2.5 py-1.5 break-all select-all text-muted-foreground">{dsn}</p>
                   </div>
                 )}
 

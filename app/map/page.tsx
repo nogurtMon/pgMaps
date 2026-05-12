@@ -15,7 +15,8 @@ import { Bug, Lightbulb, ChevronDown, ArrowLeft, Share2, Pencil, Eye, Sun, Moon,
 import { AttributeTablePanel } from "@/components/attribute-table-panel";
 import { ShareDialog } from "@/components/share-dialog";
 import { TableInfoDialog } from "@/components/table-info-dialog";
-import { BASEMAP_OPTIONS } from "@/lib/types";
+import { BasemapManagerDialog } from "@/components/basemap-manager-dialog";
+import { DEFAULT_BASEMAP, getBasemapColor, getBasemapLabel, type UserBasemap } from "@/lib/basemaps";
 import { ImportTasksProvider } from "@/lib/import-tasks-context";
 import { Toaster } from "@/components/toaster";
 import { MapLegend } from "@/components/map-legend";
@@ -41,7 +42,18 @@ export default function Home() {
   const [layers, setLayers] = React.useState<MapLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = React.useState<string | null>(null);
   const [zoomTarget, setZoomTarget] = React.useState<ZoomTarget | null>(null);
-  const [basemap, setBasemap] = React.useState("streets");
+  const [basemap, setBasemap] = React.useState(DEFAULT_BASEMAP);
+  const [basemapManagerOpen, setBasemapManagerOpen] = React.useState(false);
+  const [userBasemaps, setUserBasemaps] = React.useState<UserBasemap[]>([]);
+
+  async function fetchUserBasemaps() {
+    try {
+      const res = await fetch("/api/basemaps");
+      if (res.ok) setUserBasemaps(await res.json());
+    } catch {}
+  }
+
+  React.useEffect(() => { fetchUserBasemaps(); }, []);
   const [mapView, setMapView] = React.useState<MapView | undefined>(undefined);
   const [tablePanelOpen, setTablePanelOpen] = React.useState(false);
   const [tablePanelLayerId, setTablePanelLayerId] = React.useState<string | null>(null);
@@ -148,7 +160,7 @@ export default function Home() {
             filters: undefined,
           }))
         );
-        setBasemap(v.state_json.basemap ?? "streets");
+        setBasemap(v.state_json.basemap ?? "liberty");
         if (v.state_json.view) {
           setZoomTarget({ center: [v.state_json.view.longitude, v.state_json.view.latitude], zoom: v.state_json.view.zoom });
         }
@@ -389,28 +401,26 @@ export default function Home() {
           {/* Basemap selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-7 w-7 rounded-md border overflow-hidden hover:ring-2 hover:ring-ring transition-all shrink-0" title="Basemap">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={BASEMAP_OPTIONS.find(o => o.key === basemap)?.thumb ?? BASEMAP_OPTIONS[0].thumb}
-                  alt={basemap}
-                  className="w-full h-full object-cover"
-                />
+              <button
+                className="h-7 rounded-md border px-2 text-xs hover:bg-muted transition-colors shrink-0 flex items-center gap-1.5"
+                title="Basemap"
+              >
+                <div className="w-3.5 h-3.5 rounded-sm border shrink-0" style={{ background: getBasemapColor(basemap) }} />
+                <span>{getBasemapLabel(basemap, userBasemaps)}</span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {BASEMAP_OPTIONS.map(({ key, label, thumb }) => (
-                <DropdownMenuItem
-                  key={key}
-                  onClick={() => setBasemap(key)}
-                  className="flex items-center gap-2"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={thumb} alt={label} className="w-7 h-7 rounded object-cover border shrink-0" />
-                  <span className="text-xs">{label}</span>
-                  {basemap === key && <span className="ml-auto text-primary text-xs">✓</span>}
+            <DropdownMenuContent align="end" className="w-44">
+              {userBasemaps.map(({ id, name }) => (
+                <DropdownMenuItem key={id} onClick={() => setBasemap(id)} className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-sm border shrink-0" style={{ background: getBasemapColor(id) }} />
+                  <span className="text-xs truncate">{name}</span>
+                  {basemap === id && <span className="ml-auto text-primary text-xs">✓</span>}
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setBasemapManagerOpen(true)} className="text-xs text-muted-foreground">
+                Manage basemaps…
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
@@ -480,6 +490,7 @@ export default function Home() {
               onUpdateLayer={updateLayer}
               flyTo={zoomTarget}
               basemap={basemap}
+              userBasemaps={userBasemaps}
               onViewChange={setMapView}
               editMode={viewMode === "editing"}
               onManageTable={(schema, table) => setTableInfoTarget({ schema, table })}
@@ -514,6 +525,11 @@ export default function Home() {
         </div>
       </div>
 
+      <BasemapManagerDialog
+        open={basemapManagerOpen}
+        onOpenChange={setBasemapManagerOpen}
+        onChange={fetchUserBasemaps}
+      />
       <ConnectionsDialog
         open={settingsOpen}
         onOpenChange={(v) => { setSettingsOpen(v); if (!v) { setConnectionsKey((k) => k + 1); setEditingConnectionId(undefined); } }}

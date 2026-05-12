@@ -6,7 +6,7 @@
 
 **Open-source web interface for PostGIS power users**
 
-🤖 🛑 Every line in this repo is reviewed by a human
+🤖 AI-generated but quality controlled by a human
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 

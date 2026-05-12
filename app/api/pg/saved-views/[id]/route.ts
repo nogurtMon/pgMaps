@@ -23,7 +23,7 @@ export async function GET(
   try {
     const { rows } = await getPool().query(
       `SELECT id, name, state_json, is_public, archived, created_at, updated_at
-       FROM _postgis_frontend_saved_views WHERE id = $1`,
+       FROM _postgis_frontend_maps WHERE id = $1`,
       [id]
     );
     if (rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -49,7 +49,7 @@ export async function PUT(
     if (archived !== undefined) { queryParams.push(archived); setClauses.push(`archived = $${queryParams.length}`); }
     queryParams.push(id);
     await getPool().query(
-      `UPDATE _postgis_frontend_saved_views SET ${setClauses.join(", ")} WHERE id = $${queryParams.length}`,
+      `UPDATE _postgis_frontend_maps SET ${setClauses.join(", ")} WHERE id = $${queryParams.length}`,
       queryParams
     );
     return NextResponse.json({ success: true });
@@ -65,7 +65,7 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    await getPool().query(`DELETE FROM _postgis_frontend_saved_views WHERE id = $1`, [id]);
+    await getPool().query(`DELETE FROM _postgis_frontend_maps WHERE id = $1`, [id]);
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -31,7 +31,16 @@ function getPool(): Pool {
 async function ensureTable(): Promise<void> {
   if (_ready) return;
   await getPool().query(`
-    CREATE TABLE IF NOT EXISTS _postgis_frontend_saved_views (
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '_postgis_frontend_saved_views')
+         AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '_postgis_frontend_maps')
+      THEN
+        ALTER TABLE _postgis_frontend_saved_views RENAME TO _postgis_frontend_maps;
+      END IF;
+    END $$
+  `);
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS _postgis_frontend_maps (
       id            TEXT        PRIMARY KEY,
       connection_id TEXT        NOT NULL,
       name          TEXT        NOT NULL,
@@ -41,10 +50,10 @@ async function ensureTable(): Promise<void> {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE`);
-  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE`);
-  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS password_hash TEXT`);
-  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_maps ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_maps ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_maps ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_maps ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
   _ready = true;
 }
 
@@ -56,7 +65,7 @@ export async function getShare(id: string, password?: string): Promise<ShareGetR
   await ensureTable();
   const { rows } = await getPool().query(
     `SELECT state_json, connection_id, password_hash, expires_at
-     FROM _postgis_frontend_saved_views WHERE id = $1 AND is_public = TRUE`,
+     FROM _postgis_frontend_maps WHERE id = $1 AND is_public = TRUE`,
     [id]
   );
   if (!rows[0]) return { config: null, requiresPassword: false, isExpired: false };
@@ -94,7 +103,7 @@ export async function setShare(
   const { connectionId, ...stateJson } = config;
   if (!connectionId) throw new Error("Share config missing connectionId");
   await getPool().query(
-    `INSERT INTO _postgis_frontend_saved_views
+    `INSERT INTO _postgis_frontend_maps
        (id, connection_id, name, state_json, is_public, password_hash, expires_at)
      VALUES ($1, $2, $3, $4::jsonb, TRUE, $5, $6)
      ON CONFLICT (id) DO UPDATE
@@ -111,7 +120,7 @@ export async function setShare(
 export async function deleteShare(id: string): Promise<void> {
   await ensureTable();
   await getPool().query(
-    `UPDATE _postgis_frontend_saved_views SET is_public = FALSE WHERE id = $1`,
+    `UPDATE _postgis_frontend_maps SET is_public = FALSE WHERE id = $1`,
     [id]
   );
 }
@@ -119,7 +128,7 @@ export async function deleteShare(id: string): Promise<void> {
 export async function listShares(): Promise<ViewIndexEntry[]> {
   await ensureTable();
   const { rows } = await getPool().query(
-    `SELECT id, name, created_at, updated_at FROM _postgis_frontend_saved_views WHERE is_public = TRUE ORDER BY created_at DESC`
+    `SELECT id, name, created_at, updated_at FROM _postgis_frontend_maps WHERE is_public = TRUE ORDER BY created_at DESC`
   );
   return rows.map((r) => ({
     id: r.id,

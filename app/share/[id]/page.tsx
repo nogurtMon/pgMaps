@@ -15,7 +15,11 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   const { id } = use(params);
   const [layers, setLayers] = React.useState<MapLayer[]>([]);
   const [mapName, setMapName] = React.useState<string | undefined>(undefined);
-  const [basemap, setBasemap] = React.useState("streets");
+  const [basemap, setBasemap] = React.useState("liberty");
+  const [userBasemaps, setUserBasemaps] = React.useState<{ id: string; name: string; styleUrl: string }[]>([]);
+  React.useEffect(() => {
+    fetch("/api/basemaps").then(r => r.ok ? r.json() : []).then(setUserBasemaps).catch(() => {});
+  }, []);
   const [initialView, setInitialView] = React.useState<{ longitude: number; latitude: number; zoom: number } | undefined>(undefined);
   const [flyTo, setFlyTo] = React.useState<ZoomTarget | null>(null);
   const [status, setStatus] = React.useState<"loading" | "requires_password" | "expired" | "ready" | "error">("loading");
@@ -35,7 +39,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   }
 
   function applyConfig(config: any) {
-    setBasemap(config.basemap ?? "streets");
+    setBasemap(config.basemap ?? "liberty");
     setMapName(config.name);
     if (config.view) setInitialView(config.view);
     const loaded: MapLayer[] = (config.layers ?? []).map((l: any) => ({
@@ -159,6 +163,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
         <MaplibreMap
           layers={layers}
           basemap={basemap}
+          userBasemaps={userBasemaps}
           initialView={initialView}
           flyTo={flyTo}
           hideLegend

@@ -127,12 +127,15 @@ export interface UndoableOp {
   apply?: () => Promise<void>; // redo: re-apply the operation after an undo
 }
 
-export const BASEMAP_OPTIONS: { key: string; label: string; thumb: string }[] = [
-  { key: "streets",   label: "Streets",   thumb: "/basemaps/street.svg"    },
-  { key: "satellite", label: "Satellite", thumb: "/basemaps/satellite.svg" },
-  { key: "hybrid",    label: "Hybrid",    thumb: "/basemaps/satellite.svg" },
-  { key: "topo",      label: "Topo",      thumb: "/basemaps/street.svg"    },
-  { key: "dataviz",   label: "Dataviz",   thumb: "/basemaps/street.svg"    },
+export const BASEMAP_OPTIONS: { key: string; label: string; thumb: string; requiresKey?: boolean }[] = [
+  { key: "liberty",   label: "Liberty",   thumb: "/basemaps/street.svg"    },
+  { key: "bright",    label: "Bright",    thumb: "/basemaps/street.svg"    },
+  { key: "positron",  label: "Positron",  thumb: "/basemaps/street.svg"    },
+  { key: "streets",   label: "Streets",   thumb: "/basemaps/street.svg",    requiresKey: true },
+  { key: "satellite", label: "Satellite", thumb: "/basemaps/satellite.svg", requiresKey: true },
+  { key: "hybrid",    label: "Hybrid",    thumb: "/basemaps/satellite.svg", requiresKey: true },
+  { key: "topo",      label: "Topo",      thumb: "/basemaps/street.svg",    requiresKey: true },
+  { key: "dataviz",   label: "Dataviz",   thumb: "/basemaps/street.svg",    requiresKey: true },
 ];
 
 export const LAYER_COLORS = [

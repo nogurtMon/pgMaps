@@ -17,8 +17,18 @@ function getPool(): Pool {
 
 async function ensureTable(): Promise<void> {
   if (_ready) return;
+  // Migrate from old table name if it exists.
   await getPool().query(`
-    CREATE TABLE IF NOT EXISTS _postgis_frontend_saved_views (
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '_postgis_frontend_saved_views')
+         AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '_postgis_frontend_maps')
+      THEN
+        ALTER TABLE _postgis_frontend_saved_views RENAME TO _postgis_frontend_maps;
+      END IF;
+    END $$
+  `);
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS _postgis_frontend_maps (
       id            TEXT        PRIMARY KEY,
       connection_id TEXT        NOT NULL,
       name          TEXT        NOT NULL,
@@ -29,11 +39,11 @@ async function ensureTable(): Promise<void> {
     )
   `);
   await getPool().query(`
-    ALTER TABLE _postgis_frontend_saved_views
+    ALTER TABLE _postgis_frontend_maps
       ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE
   `);
   await getPool().query(`
-    ALTER TABLE _postgis_frontend_saved_views
+    ALTER TABLE _postgis_frontend_maps
       ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE
   `);
   _ready = true;
@@ -48,7 +58,7 @@ export async function GET(req: NextRequest) {
     await ensureTable();
     const { rows } = await getPool().query(
       `SELECT id, name, state_json, is_public, archived, created_at, updated_at
-       FROM _postgis_frontend_saved_views
+       FROM _postgis_frontend_maps
        WHERE connection_id = $1 AND archived = $2
        ORDER BY updated_at DESC`,
       [connectionId, showArchived]
@@ -66,7 +76,7 @@ export async function POST(req: NextRequest) {
   try {
     await ensureTable();
     await getPool().query(
-      `INSERT INTO _postgis_frontend_saved_views (id, connection_id, name, state_json)
+      `INSERT INTO _postgis_frontend_maps (id, connection_id, name, state_json)
        VALUES ($1, $2, $3, $4)`,
       [id, connectionId, name.trim(), JSON.stringify(state)]
     );

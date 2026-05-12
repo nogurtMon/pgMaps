@@ -2167,7 +2167,7 @@ function ConnectionBrowserNode({
     }
     return m;
   }, [spatialTables]);
-  const layerKeys = React.useMemo(() => new Set(layers.map((l) => `${l.table.table_schema}.${l.table.table_name}`)), [layers]);
+  const layerKeys = React.useMemo(() => new Set(layers.map((l) => `${l.connectionId}|${l.table.table_schema}.${l.table.table_name}`)), [layers]);
 
   function toggleSchema(schema: string) {
     setCollapsed((prev) => {
@@ -2292,7 +2292,7 @@ function ConnectionBrowserNode({
                 </div>
 
                 {!isCollapsed && schemaTables.map((t) => {
-                  const key = `${t.table_schema}.${t.table_name}`;
+                  const key = `${connId}|${t.table_schema}.${t.table_name}`;
                   const alreadyAdded = layerKeys.has(key);
                   const sridUnknown = !t.srid || t.srid === 0;
                   const isAssigning = assigningSrid === key;
@@ -2554,7 +2554,7 @@ function ConnectionBrowserNode({
           })()}
           {contextMenu.target.type === "table" && (() => {
             const t = (contextMenu.target as { type: "table"; table: TableRow }).table;
-            const alreadyAdded = layerKeys.has(`${t.table_schema}.${t.table_name}`);
+            const alreadyAdded = layerKeys.has(`${connId}|${t.table_schema}.${t.table_name}`);
             return (
               <>
                 <button

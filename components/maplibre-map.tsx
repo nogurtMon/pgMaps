@@ -128,25 +128,7 @@ function geomAnchor(geom: any): [number, number] | null {
 }
 
 // ─── basemap definitions ──────────────────────────────────────────────────────
-const MT_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? "";
-function mt(styleId: string) {
-  return `https://api.maptiler.com/maps/${styleId}/style.json?key=${MT_KEY}`;
-}
-
-const BASEMAPS: Record<string, string> = {
-  streets:   mt("streets-v2"),
-  satellite: mt("satellite"),
-  hybrid:    mt("hybrid"),
-  topo:      mt("topo-v2"),
-  dataviz:   mt("dataviz"),
-};
-
-const BLANK_STYLE = {
-  version: 8 as const,
-  sources: {},
-  layers: [],
-  glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${MT_KEY}`,
-};
+import { resolveBasemapUrl, BLANK_STYLE, type UserBasemap } from "@/lib/basemaps";
 
 // ─── datetime sort helper ─────────────────────────────────────────────────────
 const DATE_KEY_RE = /date|time|week|month|year|dt|timestamp/i;
@@ -196,6 +178,7 @@ interface Props {
   editMode?: boolean;
   flyTo?: ZoomTarget | null;
   basemap?: string;
+  userBasemaps?: UserBasemap[];
   initialView?: MapView;
   onViewChange?: (view: MapView) => void;
   hideGeocoder?: boolean;
@@ -575,7 +558,7 @@ function getNeighborPositions(selected: VertexPos, all: VertexPos[], geomType: s
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
-const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideGeocoder, hideZoom, hideLegend, shareControls, editMode = false, onManageTable, onSelectionChange, onShowInTable, onAddEdit, tablePanelOpen }, ref) {
+const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function MaplibreMap({ layers, flyTo, basemap = "", userBasemaps = [], initialView, onViewChange, onUpdateLayer, hideGeocoder, hideZoom, hideLegend, shareControls, editMode = false, onManageTable, onSelectionChange, onShowInTable, onAddEdit, tablePanelOpen }, ref) {
   const mapRef = React.useRef<any>(null);
   const drawRef = React.useRef<MapboxDraw | null>(null);
   const deckCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -1589,10 +1572,18 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
     return () => { map.off("mousemove", assertCursor); mapCanvas.style.cursor = ""; };
   }, [geomEditState, addFeatureState]);
 
-  const mapStyle = React.useMemo(
-    () => (basemap && basemap in BASEMAPS ? BASEMAPS[basemap] : BLANK_STYLE) as any,
-    [basemap],
+  const resolvedStyleUrl = React.useMemo(
+    () => resolveBasemapUrl(basemap, userBasemaps),
+    [basemap, userBasemaps],
   );
+  const mapStyle = (resolvedStyleUrl ?? BLANK_STYLE) as any;
+
+  // Extract a Mapbox access token from the style URL if present, so tile sub-requests work.
+  const mapboxToken = React.useMemo(() => {
+    if (!resolvedStyleUrl) return "";
+    const m = resolvedStyleUrl.match(/[?&]access_token=([^&]+)/);
+    return m ? m[1] : "";
+  }, [resolvedStyleUrl]);
 
   // ─── fly to ───────────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -1737,9 +1728,9 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
 
     // MapLibre-native highlight source — visible even when deck.gl canvas is hidden
     map.addSource("_sel", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({ id: "_sel-fill",   type: "fill",   source: "_sel", filter: ["==", "$type", "Polygon"],    paint: { "fill-color": "#3b82f6", "fill-opacity": 0.18 } });
-    map.addLayer({ id: "_sel-line",   type: "line",   source: "_sel",                                        paint: { "line-color": "#ffffff", "line-width": 2.5, "line-opacity": 0.9 } });
-    map.addLayer({ id: "_sel-circle", type: "circle", source: "_sel", filter: ["==", "$type", "Point"],      paint: { "circle-radius": 10, "circle-color": "#3b82f6", "circle-opacity": 0.5, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
+    map.addLayer({ id: "_sel-fill",   type: "fill",   source: "_sel", filter: ["==", "$type", "Polygon"],    paint: { "fill-color": "#fbbf24", "fill-opacity": 0.18 } });
+    map.addLayer({ id: "_sel-line",   type: "line",   source: "_sel",                                        paint: { "line-color": "#fbbf24", "line-width": 2.5, "line-opacity": 0.9 } });
+    map.addLayer({ id: "_sel-circle", type: "circle", source: "_sel", filter: ["==", "$type", "Point"],      paint: { "circle-radius": 10, "circle-color": "#fbbf24", "circle-opacity": 0.5, "circle-stroke-color": "#fbbf24", "circle-stroke-width": 2.5 } });
   }, [overlay]);
 
   // ─── keep MapLibre highlight source in sync (visible even during draw mode) ─
@@ -1761,8 +1752,8 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
           pickable: false,
           filled: true,
           stroked: true,
-          getFillColor: [59, 130, 246, 45],
-          getLineColor: [255, 255, 255, 220],
+          getFillColor: [251, 191, 36, 45],
+          getLineColor: [251, 191, 36, 220],
           getLineWidth: 2.5,
           lineWidthUnits: "pixels",
           pointRadiusUnits: "pixels",
@@ -1796,6 +1787,16 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
         ref={mapRef}
         onLoad={onLoad}
         reuseMaps
+        transformRequest={mapboxToken ? (url: string) => {
+          if (url.startsWith("mapbox://")) {
+            const path = url.slice("mapbox://".length);
+            return { url: `https://api.mapbox.com/${path}${path.includes("?") ? "&" : "?"}access_token=${mapboxToken}` };
+          }
+          if (url.includes("api.mapbox.com") || url.includes("events.mapbox.com")) {
+            return { url: `${url}${url.includes("?") ? "&" : "?"}access_token=${mapboxToken}` };
+          }
+          return { url };
+        } : undefined}
         onZoom={(e) => setZoom(e.viewState.zoom)}
         onRotate={(e) => setBearing(e.viewState.bearing ?? 0)}
         initialViewState={initialView ?? { longitude: -98.5556199, latitude: 39.8097343, zoom: 4 }}
