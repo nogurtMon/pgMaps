@@ -3,7 +3,7 @@ import React from "react";
 import { Eye, EyeOff, Locate, ChevronDown, BookOpen, Layers as LayersIcon, Map as MapIcon, X } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import type { MapLayer, LayerControl, TemporalMode } from "@/lib/types";
-import { BASEMAP_OPTIONS } from "@/lib/types";
+import { getBasemapColor, type UserBasemap } from "@/lib/basemaps";
 import Link from "next/link";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -470,15 +470,14 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
   );
 }
 
-function BasemapsPanel({ basemap, onSetBasemap }: { basemap: string; onSetBasemap: (b: string) => void }) {
+function BasemapsPanel({ basemap, onSetBasemap, userBasemaps }: { basemap: string; onSetBasemap: (b: string) => void; userBasemaps: UserBasemap[] }) {
   return (
     <div className="p-3 grid grid-cols-2 gap-2">
-      {BASEMAP_OPTIONS.map(({ key, label, thumb }) => (
-        <button key={key} onClick={() => onSetBasemap(key)}
-          className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium text-left transition-colors border ${basemap === key ? "border-primary bg-primary/5 text-foreground" : "border-border hover:bg-muted"}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={thumb} alt={label} className="w-6 h-6 rounded shrink-0 object-cover border" />
-          {label}
+      {userBasemaps.map(({ id, name }) => (
+        <button key={id} onClick={() => onSetBasemap(id)}
+          className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium text-left transition-colors border ${basemap === id ? "border-primary bg-primary/5 text-foreground" : "border-border hover:bg-muted"}`}>
+          <div className="w-6 h-6 rounded shrink-0 border" style={{ background: getBasemapColor(id) }} />
+          {name}
         </button>
       ))}
     </div>
@@ -515,6 +514,10 @@ export function ShareMapBar({
 }: ShareMapBarProps) {
   const [activePanel, setActivePanel] = React.useState<ActivePanel>(null);
   const barRef = React.useRef<HTMLDivElement>(null);
+  const [userBasemaps, setUserBasemaps] = React.useState<UserBasemap[]>([]);
+  React.useEffect(() => {
+    fetch("/api/basemaps").then(r => r.ok ? r.json() : []).then(setUserBasemaps).catch(() => {});
+  }, []);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel(prev => prev === panel ? null : panel);
@@ -585,7 +588,7 @@ export function ShareMapBar({
               onFlyTo={onFlyTo}
             />
           )}
-          {activePanel === "basemaps" && <BasemapsPanel basemap={basemap} onSetBasemap={onSetBasemap} />}
+          {activePanel === "basemaps" && <BasemapsPanel basemap={basemap} onSetBasemap={onSetBasemap} userBasemaps={userBasemaps} />}
         </div>
       )}
     </div>

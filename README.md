@@ -4,7 +4,7 @@
 
 # PostGIS Frontend
 
-**Open-source web interface for PostGIS power users**
+**Open-source web interface for PostGIS**
 
 🤖 AI generated. Human quality control.
 
