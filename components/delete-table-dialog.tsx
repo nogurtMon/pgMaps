@@ -63,7 +63,7 @@ export function DeleteTableDialog({ open, onOpenChange, connectionId, schema, ta
         <div className="space-y-4 mt-2">
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-1.5 text-sm">
             <p className="font-semibold text-destructive">Warning: You are about to permanently delete:</p>
-            <p className="font-mono text-sm">{schema}.{table}</p>
+            <p className="text-sm">{schema}.{table}</p>
             <p className="text-muted-foreground">
               All rows, indexes, triggers, and constraints in this table will be destroyed.
               There is no way to recover this data once deleted.
@@ -72,14 +72,14 @@ export function DeleteTableDialog({ open, onOpenChange, connectionId, schema, ta
 
           <div className="space-y-1.5">
             <Label htmlFor="delete-confirm">
-              Type <span className="font-mono font-semibold">{table}</span> to confirm
+              Type <span className="font-semibold">{table}</span> to confirm
             </Label>
             <Input
               id="delete-confirm"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder={table}
-              className="font-mono"
+              className=""
               autoComplete="off"
             />
           </div>

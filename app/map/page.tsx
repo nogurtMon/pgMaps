@@ -6,51 +6,106 @@ import { ConnectionsDialog } from "@/components/connections-dialog";
 import { TableSidebar } from "@/components/table-sidebar";
 import { useConnection } from "@/hooks/use-connection";
 import { LAYER_COLORS, DEFAULT_STYLE, migrateLayerControls } from "@/lib/types";
-import type { TableRow, MapLayer } from "@/lib/types";
-import type { ZoomTarget, MapView } from "@/components/maplibre-map";
+import type { TableRow, MapLayer, LayerControl, UndoableOp } from "@/lib/types";
+import type { ZoomTarget, MapView, MaplibreMapHandle } from "@/components/maplibre-map";
 
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Map, Database, Github, Bug, Lightbulb } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle";
-import { SavedViewsDialog } from "@/components/saved-views-dialog";
+import { Bug, Lightbulb, ChevronDown, ArrowLeft, Share2, Pencil, Eye, Sun, Moon, SheetIcon, Home as HomeIcon, FilePlus, Undo2 } from "lucide-react";
+import { AttributeTablePanel } from "@/components/attribute-table-panel";
+import { ShareDialog } from "@/components/share-dialog";
+import { TableInfoDialog } from "@/components/table-info-dialog";
 import { BASEMAP_OPTIONS } from "@/lib/types";
 import { ImportTasksProvider } from "@/lib/import-tasks-context";
 import { Toaster } from "@/components/toaster";
+import { MapLegend } from "@/components/map-legend";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-const LAYERS_KEY = "postgis-layers";
-const CONN_LS_KEY = "pg_connection_id";
-
-function loadLayers(connectionId: string): MapLayer[] {
-  try {
-    const all = JSON.parse(localStorage.getItem(LAYERS_KEY) ?? "{}");
-    return (all[connectionId] ?? []).map((l: any) => ({
-      ...l,
-      dataVersion: 0,
-      controls: migrateLayerControls(l),
-      filters: undefined,
-    }));
-  } catch { return []; }
-}
-
-function saveLayers(connectionId: string, layers: MapLayer[]) {
-  try {
-    const all = JSON.parse(localStorage.getItem(LAYERS_KEY) ?? "{}");
-    all[connectionId] = layers;
-    localStorage.setItem(LAYERS_KEY, JSON.stringify(all));
-  } catch {}
-}
 
 export default function Home() {
   const { connectionId, setConnectionId, clearConnection, loaded } = useConnection();
+  const { theme, setTheme } = useTheme();
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [connectionsKey, setConnectionsKey] = React.useState(0);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [activeViewName, setActiveViewName] = React.useState<string | null>(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameInput, setNameInput] = React.useState("");
+  const nameInputRef = React.useRef<HTMLInputElement>(null);
+  const mapRef = React.useRef<MaplibreMapHandle>(null);
   const [layers, setLayers] = React.useState<MapLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = React.useState<string | null>(null);
   const [zoomTarget, setZoomTarget] = React.useState<ZoomTarget | null>(null);
-  const [basemap, setBasemap] = React.useState("liberty");
+  const [basemap, setBasemap] = React.useState("streets");
   const [mapView, setMapView] = React.useState<MapView | undefined>(undefined);
+  const [tablePanelOpen, setTablePanelOpen] = React.useState(false);
+  const [tablePanelLayerId, setTablePanelLayerId] = React.useState<string | null>(null);
+  const [viewMode, setViewMode] = React.useState<"editing" | "viewing">("editing");
+  const [activeViewId, setActiveViewId] = React.useState<string | null>(null);
+  const [shareId, setShareId] = React.useState<string | null>(null);
+  const [tableInfoTarget, setTableInfoTarget] = React.useState<{ schema: string; table: string } | null>(null);
+  const [goToCtid, setGoToCtid] = React.useState<string | undefined>(undefined);
+  const [activateGoTo, setActivateGoTo] = React.useState(0);
+
+  function handleSelectionChange(ctids: string[], layerId: string | null) {
+    if (tablePanelOpen && layerId && ctids.length > 0) {
+      const geoLayers = layers.filter(l => l.table.geom_col);
+      if (geoLayers.some(l => l.id === layerId)) {
+        setTablePanelLayerId(layerId);
+        setGoToCtid(ctids[0]);
+        setActivateGoTo(n => n + 1);
+      }
+    }
+  }
+
+  function handleShowInTable(layerId: string, ctid: string) {
+    const geoLayers = layers.filter(l => l.table.geom_col);
+    if (!geoLayers.some(l => l.id === layerId)) return;
+    setTablePanelLayerId(layerId);
+    setTablePanelOpen(true);
+    setGoToCtid(ctid);
+    // Delay so the layer-change fetchRows in the panel completes before navigateToCtid fires.
+    setTimeout(() => setActivateGoTo(n => n + 1), 350);
+  }
+  const [editHistory, setEditHistory] = React.useState<UndoableOp[]>([]);
+  const [undoing, setUndoing] = React.useState(false);
+
+  function addEdit(op: UndoableOp) {
+    setEditHistory(h => [...h, op]);
+  }
+
+  async function undoLast() {
+    if (undoing || editHistory.length === 0) return;
+    setUndoing(true);
+    const op = editHistory[editHistory.length - 1];
+    try {
+      await op.revert();
+      setEditHistory(h => h.slice(0, -1));
+    } catch (e: any) {
+      console.error("[undo]", e.message);
+    } finally {
+      setUndoing(false);
+    }
+  }
+
+  function commitAll() {
+    setEditHistory([]);
+  }
+
+  // Ctrl+Z = undo
+  React.useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const meta = e.ctrlKey || e.metaKey;
+      if (!meta) return;
+      if (e.key === "z" && !e.shiftKey) { e.preventDefault(); undoLast(); }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editHistory, undoing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function zoomToLayer(layer: MapLayer) {
     try {
@@ -71,11 +126,37 @@ export default function Home() {
     } catch {}
   }
 
-  // Load layers once on mount
+  // Auto-load view if ?view= is present
   React.useEffect(() => {
-    const storedId = localStorage.getItem(CONN_LS_KEY) ?? "";
-    if (storedId) setLayers(loadLayers(storedId));
-  }, []);
+    // Must read window.location inside the effect — useState initializer runs on
+    // the server where window is undefined, so it can never be read up front.
+    const viewId = new URLSearchParams(window.location.search).get("view");
+    if (!viewId) return;
+    fetch(`/api/pg/saved-views/${viewId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.view) return;
+        const v = data.view;
+        setLayers(
+          (v.state_json.layers ?? []).map((l: any) => ({
+            ...l,
+            id: crypto.randomUUID(),
+            connectionId: l.connectionId,
+            dataVersion: 0,
+            controls: migrateLayerControls(l),
+            filters: undefined,
+          }))
+        );
+        setBasemap(v.state_json.basemap ?? "streets");
+        if (v.state_json.view) {
+          setZoomTarget({ center: [v.state_json.view.longitude, v.state_json.view.latitude], zoom: v.state_json.view.zoom });
+        }
+        setActiveViewName(v.name ?? null);
+        setActiveViewId(viewId);
+        if (v.is_public) setShareId(viewId);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-open connections dialog on first load if no connection is configured
   React.useEffect(() => {
@@ -87,33 +168,84 @@ export default function Home() {
     if (loaded && !connectionId) setLayers([]);
   }, [connectionId, loaded]);
 
-  // Persist layers whenever they change
-  React.useEffect(() => {
-    if (!loaded || !connectionId) return;
-    const t = setTimeout(() => saveLayers(connectionId, layers), 500);
-    return () => clearTimeout(t);
-  }, [layers, loaded, connectionId]);
 
-  function addLayer(table: TableRow) {
+  // Autosave — create immediately on first layer, debounce subsequent updates
+  const activeViewIdRef = React.useRef<string | null>(null);
+  const creatingRef = React.useRef(false);
+  React.useEffect(() => { activeViewIdRef.current = activeViewId; }, [activeViewId]);
+  const mapViewRef = React.useRef(mapView);
+  React.useEffect(() => { mapViewRef.current = mapView; }, [mapView]);
+
+  function buildState() {
+    const v = mapViewRef.current;
+    return {
+      layers,
+      basemap,
+      view: v ? { longitude: v.longitude, latitude: v.latitude, zoom: v.zoom } : undefined,
+    };
+  }
+
+  React.useEffect(() => {
+    if (!loaded || !connectionId || layers.length === 0) return;
+    const currentId = activeViewIdRef.current;
+
+    // No saved view yet — create one immediately (no debounce)
+    if (!currentId) {
+      if (creatingRef.current) return;
+      creatingRef.current = true;
+      const id = crypto.randomUUID();
+      fetch("/api/pg/saved-views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, id, name: "Untitled map", state: buildState() }),
+      }).then(res => {
+        if (res.ok) {
+          setActiveViewId(id);
+          activeViewIdRef.current = id;
+          window.history.replaceState(null, "", `/map?view=${id}`);
+        }
+        creatingRef.current = false;
+      });
+      return;
+    }
+
+    // Existing view — debounced update
+    const t = setTimeout(() => {
+      fetch(`/api/pg/saved-views/${currentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: buildState() }),
+      });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [layers, basemap, connectionId, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  function addLayer(table: TableRow, connId?: string) {
     const key = `${table.table_schema}.${table.table_name}`;
     if (layers.some((l) => `${l.table.table_schema}.${l.table.table_name}` === key)) return;
     const color = LAYER_COLORS[layers.length % LAYER_COLORS.length];
     const geomType = (table.geom_type ?? "").toLowerCase();
     const isLine = geomType.includes("linestring") || geomType.includes("multiline");
+    const strokeColor = isLine ? color : "#ffffff";
+    const defaultControls: LayerControl[] = [
+      ...(!isLine ? [{ id: crypto.randomUUID(), type: "fill" as const, enabled: true, shared: false, color, opacity: 0.85 }] : []),
+      { id: crypto.randomUUID(), type: "stroke" as const, enabled: true, shared: false, color: strokeColor, opacity: 1, width: isLine ? 2 : 1 },
+    ];
     setLayers((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         table,
-        connectionId,
+        connectionId: connId ?? connectionId,
         visible: true,
         style: {
           ...DEFAULT_STYLE,
           color,
-          strokeColor: isLine ? color : "#ffffff",
+          strokeColor,
           lineWidth: isLine ? 2 : 1,
         },
-        controls: [],
+        controls: defaultControls,
       },
     ]);
   }
@@ -126,15 +258,24 @@ export default function Home() {
     setLayers((prev) => prev.map((l) => {
       if (l.id !== id) return l;
       const updated = { ...l, ...patch };
-      if (patch.controls) updated.dataVersion = (l.dataVersion ?? 0) + 1;
+      if (patch.controls) {
+        updated.dataVersion = (l.dataVersion ?? 0) + 1;
+        // Keep style.color / style.strokeColor in sync with the primary fill/stroke controls
+        // so that GeomSwatches and other display code reading style get the correct value.
+        const controls = updated.controls as LayerControl[];
+        const fillCtrl = controls.find(c => c.type === "fill") as Extract<LayerControl, { type: "fill" }> | undefined;
+        const strokeCtrl = controls.find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+        const geomType = (l.geomTypeOverride || l.table?.geom_type || "").toLowerCase();
+        const isLine = geomType.includes("linestring") || geomType.includes("line");
+        if (fillCtrl) updated.style = { ...updated.style, color: fillCtrl.color };
+        if (strokeCtrl) {
+          updated.style = { ...updated.style, strokeColor: strokeCtrl.color };
+          // For lines, the stroke control IS the line color (no fill control exists)
+          if (isLine) updated.style = { ...updated.style, color: strokeCtrl.color };
+        }
+      }
       return updated;
     }));
-  }
-
-  function onLayerDataChanged(id: string) {
-    setLayers((prev) =>
-      prev.map((l) => l.id === id ? { ...l, dataVersion: (l.dataVersion ?? 0) + 1 } : l)
-    );
   }
 
   function reorderLayers(newOrder: string[]) {
@@ -145,55 +286,172 @@ export default function Home() {
     <ImportTasksProvider>
     <Toaster />
     <div className="h-screen overflow-hidden grid grid-rows-[auto_1fr]">
-      <header className="bg-background border-b px-3 py-1 flex items-center gap-3 text-[11px] font-mono shrink-0">
-        <span className="flex items-center gap-1.5 font-bold tracking-widest text-primary uppercase text-xs shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.ico" alt="" className="w-4 h-4 shrink-0" />
-          PostGIS-Frontend
-        </span>
+      <header className="bg-background border-b px-3 py-1.5 flex items-center gap-3 shrink-0">
+        {/* Elephant logo — dropdown menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <button className="shrink-0 flex items-center gap-0.5 rounded-md p-1 hover:bg-muted transition-colors" title="Menu">
+              <img src="/Postgresql_elephant.png" alt="PostGIS" className="w-6 h-6" />
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuItem asChild>
+              <a href="/maps" className="flex items-center gap-2">
+                <HomeIcon className="h-3.5 w-3.5" /> Home
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href="/map" className="flex items-center gap-2">
+                <FilePlus className="h-3.5 w-3.5" /> New map
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="flex items-center gap-2">
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=feature_request.md" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                <Lightbulb className="h-3.5 w-3.5" /> Request a feature
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=bug_report.md" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                <Bug className="h-3.5 w-3.5" /> Report a bug
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <button
-          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 group"
-          onClick={() => setShareOpen(true)}
-          title="Map views"
-        >
-          {activeViewName
-            ? <span className="text-sm font-semibold truncate max-w-sm group-hover:text-primary transition-colors">{activeViewName}</span>
-            : <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Untitled map</span>
-          }
-        </button>
+        {/* Map name — click to rename */}
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={() => { const t = nameInput.trim(); if (t) { setActiveViewName(t); if (activeViewIdRef.current) fetch(`/api/pg/saved-views/${activeViewIdRef.current}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: t }) }); } setEditingName(false); }}
+            onKeyDown={e => {
+              if (e.key === "Enter") { const t = nameInput.trim(); if (t) { setActiveViewName(t); if (activeViewIdRef.current) fetch(`/api/pg/saved-views/${activeViewIdRef.current}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: t }) }); } setEditingName(false); }
+              if (e.key === "Escape") setEditingName(false);
+            }}
+            className="flex-1 min-w-0 text-base font-semibold bg-transparent border-b border-primary outline-none"
+            autoFocus
+          />
+        ) : (
+          <button
+            className="flex-1 min-w-0 text-left group"
+            onClick={() => { setNameInput(activeViewName ?? ""); setEditingName(true); }}
+            title="Click to rename"
+          >
+            {activeViewName
+              ? <span className="text-base font-semibold truncate block group-hover:text-primary transition-colors">{activeViewName}</span>
+              : <span className="text-base font-semibold text-muted-foreground block group-hover:text-foreground transition-colors">Untitled map</span>
+            }
+          </button>
+        )}
 
+        {/* Commit bar — shown when there are unsaved edits */}
+        {editHistory.length > 0 && viewMode === "editing" && (
+          <div className="flex items-center gap-1.5 shrink-0 border rounded-md px-2 py-1 bg-muted/40">
+            <span className="text-xs text-muted-foreground">
+              {editHistory.length} unsaved change{editHistory.length !== 1 ? "s" : ""}
+            </span>
+            <span className="text-muted-foreground/30 select-none">·</span>
+            <button
+              onClick={undoLast}
+              disabled={undoing || editHistory.length === 0}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 hover:bg-muted disabled:opacity-50 transition-colors"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="h-3 w-3" /> Undo
+            </button>
+            <button
+              onClick={commitAll}
+              className="text-xs bg-primary text-primary-foreground rounded px-2 py-0.5 hover:bg-primary/90 transition-colors"
+            >
+              Commit
+            </button>
+          </div>
+        )}
+
+        {/* Right controls */}
         <div className="flex items-center gap-1 shrink-0">
-          <ModeToggle />
-          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="Request a feature">
-            <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=feature_request.md" target="_blank" rel="noopener noreferrer">
-              <Lightbulb className="h-3.5 w-3.5" />
-            </a>
+          {/* Basemap selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="h-7 w-7 rounded-md border overflow-hidden hover:ring-2 hover:ring-ring transition-all shrink-0" title="Basemap">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={BASEMAP_OPTIONS.find(o => o.key === basemap)?.thumb ?? BASEMAP_OPTIONS[0].thumb}
+                  alt={basemap}
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {BASEMAP_OPTIONS.map(({ key, label, thumb }) => (
+                <DropdownMenuItem
+                  key={key}
+                  onClick={() => setBasemap(key)}
+                  className="flex items-center gap-2"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumb} alt={label} className="w-7 h-7 rounded object-cover border shrink-0" />
+                  <span className="text-xs">{label}</span>
+                  {basemap === key && <span className="ml-auto text-primary text-xs">✓</span>}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            size="icon" variant={tablePanelOpen ? "default" : "outline"} className="h-7 w-7"
+            title="Attribute table"
+            onClick={() => {
+              const geoLayers = layers.filter(l => l.table.geom_col);
+              if (geoLayers.length === 0) return;
+              const id = tablePanelLayerId && geoLayers.some(l => l.id === tablePanelLayerId)
+                ? tablePanelLayerId
+                : (activeLayerId && geoLayers.some(l => l.id === activeLayerId) ? activeLayerId : geoLayers[0].id);
+              setTablePanelLayerId(id);
+              setTablePanelOpen(v => !v);
+            }}
+          >
+            <SheetIcon className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="Report a bug">
-            <a href="https://github.com/nogurtMon/postgis-frontend/issues/new?template=bug_report.md" target="_blank" rel="noopener noreferrer">
-              <Bug className="h-3.5 w-3.5" />
-            </a>
-          </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6" asChild title="View on GitHub">
-            <a href="https://github.com/nogurtMon/postgis-frontend" target="_blank" rel="noopener noreferrer">
-              <Github className="h-3.5 w-3.5" />
-            </a>
-          </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6 relative" onClick={() => setSettingsOpen(true)} title="Database connections">
-            <Database className="h-3.5 w-3.5" />
-            <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-background ${!loaded ? "bg-muted-foreground/40" : connectionId ? "bg-green-500" : "bg-red-500"}`} />
-          </Button>
-          <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] gap-1" onClick={() => setShareOpen(true)}>
-            <Map className="h-3 w-3" /> Maps
+          {/* Editing / Viewing dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 rounded-md border h-7 px-2.5 text-xs hover:bg-muted transition-colors shrink-0">
+                {viewMode === "editing" ? <Pencil className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+                {viewMode === "editing" ? "Editing" : "Viewing"}
+                <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem onClick={() => setViewMode("editing")} className="flex items-center gap-2 text-xs">
+                <Pencil className="h-3 w-3" /> Editing
+                {viewMode === "editing" && <span className="ml-auto text-primary">✓</span>}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setViewMode("viewing"); setTablePanelOpen(false); }} className="flex items-center gap-2 text-xs">
+                <Eye className="h-3 w-3" /> Viewing
+                {viewMode === "viewing" && <span className="ml-auto text-primary">✓</span>}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setShareOpen(true)}>
+            <Share2 className="h-3 w-3" /> Share
           </Button>
         </div>
       </header>
 
       <div className="flex overflow-hidden">
-        <TableSidebar
+        {viewMode === "editing" && <TableSidebar
           connectionId={connectionId}
           connectionLoaded={loaded}
+          connectionsKey={connectionsKey}
           layers={layers}
           onAddLayer={addLayer}
           onRemoveLayer={removeLayer}
@@ -204,71 +462,77 @@ export default function Home() {
           onZoomToLayer={zoomToLayer}
           onFlyTo={(bounds) => setZoomTarget({ bounds })}
           onOpenSettings={() => setSettingsOpen(true)}
-          onConnectionLost={() => { clearConnection(); setLayers([]); }}
-          basemap={basemap}
-          onBasemapChange={setBasemap}
-        />
-        <div className="flex-1 relative">
-          <MaplibreMap
-            layers={layers}
-            onUpdateLayer={updateLayer}
-            flyTo={zoomTarget}
-            basemap={basemap}
-            onViewChange={setMapView}
-          />
-          <div className="absolute top-2 right-2 z-10 flex gap-1 bg-background/80 backdrop-blur-sm border rounded-md px-1.5 py-1 shadow-sm">
-            {BASEMAP_OPTIONS.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setBasemap(key)}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                  basemap === key
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          onConnectionLost={() => { clearConnection(); }}
+        />}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="flex-1 relative min-h-0">
+            <MaplibreMap
+              ref={mapRef}
+              layers={layers}
+              onUpdateLayer={updateLayer}
+              flyTo={zoomTarget}
+              basemap={basemap}
+              onViewChange={setMapView}
+              editMode={viewMode === "editing"}
+              onManageTable={(schema, table) => setTableInfoTarget({ schema, table })}
+              onSelectionChange={handleSelectionChange}
+              onShowInTable={handleShowInTable}
+              onAddEdit={addEdit}
+              tablePanelOpen={tablePanelOpen}
+            />
+            <MapLegend
+              layers={layers}
+              onToggleVisible={id => updateLayer(id, { visible: !layers.find(l => l.id === id)?.visible })}
+            />
           </div>
+          {tablePanelOpen && tablePanelLayerId && layers.filter(l => l.table.geom_col).length > 0 && (
+            <AttributeTablePanel
+              layers={layers.filter(l => l.table.geom_col)}
+              activeLayerId={tablePanelLayerId}
+              onLayerChange={setTablePanelLayerId}
+              onClose={() => setTablePanelOpen(false)}
+              connectionId={connectionId}
+              onFlyTo={(bounds) => setZoomTarget({ bounds })}
+              onUpdateLayer={updateLayer}
+              mapBounds={mapView?.bounds}
+              editMode={viewMode === "editing"}
+              onEdit={addEdit}
+              onEditGeometry={ctid => mapRef.current?.editGeometry(tablePanelLayerId!, ctid)}
+              onAddFeature={() => mapRef.current?.addFeature(tablePanelLayerId!)}
+              goToCtid={goToCtid}
+              activateGoTo={activateGoTo}
+            />
+          )}
         </div>
       </div>
 
       <ConnectionsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={(v) => { setSettingsOpen(v); if (!v) setConnectionsKey((k) => k + 1); }}
         activeConnectionId={connectionId}
-        onSelect={(id) => {
-          if (id !== connectionId) {
-            setConnectionId(id);
-            setLayers(id ? loadLayers(id) : []);
-            setActiveViewName(null);
-          }
-        }}
+        onSelect={(id) => { setConnectionId(id); }}
       />
-      <SavedViewsDialog
+      <ShareDialog
         open={shareOpen}
         onOpenChange={setShareOpen}
-        connectionId={connectionId}
         layers={layers}
         basemap={basemap}
         view={mapView}
-        activeViewName={activeViewName}
-        onActiveViewNameChange={setActiveViewName}
-        onLoad={(state, name) => {
-          setLayers(state.layers.map((l: any) => ({
-            ...l,
-            id: crypto.randomUUID(),
-            connectionId,
-            dataVersion: 0,
-            controls: migrateLayerControls(l),
-            filters: undefined,
-          })));
-          setBasemap(state.basemap ?? "liberty");
-          if (state.view) setZoomTarget({ center: [state.view.longitude, state.view.latitude], zoom: state.view.zoom });
-          setActiveViewName(name ?? state.name ?? null);
-        }}
+        mapName={activeViewName}
+        activeViewId={activeViewId}
+        shareId={shareId}
+        onShareIdChange={setShareId}
       />
+      {tableInfoTarget && (
+        <TableInfoDialog
+          open={!!tableInfoTarget}
+          onOpenChange={v => { if (!v) setTableInfoTarget(null); }}
+          connectionId={connectionId}
+          schema={tableInfoTarget.schema}
+          table={tableInfoTarget.table}
+          onChanged={() => {}}
+        />
+      )}
     </div>
     </ImportTasksProvider>
   );

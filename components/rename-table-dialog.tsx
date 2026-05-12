@@ -59,7 +59,7 @@ export function RenameTableDialog({ open, onOpenChange, connectionId, schema, ta
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Rename / Move Table</DialogTitle>
-          <DialogDescription className="font-mono text-xs">
+          <DialogDescription className="text-xs">
             {schema}.{table}
           </DialogDescription>
         </DialogHeader>
@@ -71,7 +71,7 @@ export function RenameTableDialog({ open, onOpenChange, connectionId, schema, ta
               id="rename-schema"
               value={newSchema}
               onChange={(e) => setNewSchema(e.target.value)}
-              className="font-mono"
+              className=""
               placeholder="public"
             />
           </div>
@@ -81,7 +81,7 @@ export function RenameTableDialog({ open, onOpenChange, connectionId, schema, ta
               id="rename-table"
               value={newTable}
               onChange={(e) => setNewTable(e.target.value)}
-              className="font-mono"
+              className=""
               placeholder={table}
             />
           </div>

@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { findCol, rowsToFeatures, LAT_COLS, LON_COLS, WKT_COLS } from "@/lib/geo-parse-utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { WorkerIn, WorkerOut } from "@/workers/xlsx-worker";
 import { useImportTasks } from "@/lib/import-tasks-context";
 import { toast } from "@/lib/toast";
@@ -793,7 +793,16 @@ async function runArcImportLoop(p: ArcImportLoopParams) {
 export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated, defaultSchema }: Props) {
   const { addTask, updateTask, registerCancel, registerResume } = useImportTasks();
   const currentTaskIdRef = React.useRef<string | null>(null);
-  const [activeTab, setActiveTab] = React.useState("arcgis");
+  const [activeTab, setActiveTab] = React.useState("scratch");
+
+  // ── From scratch state ────────────────────────────────────────────────────
+  const [scratchSchema, setScratchSchema] = React.useState(defaultSchema ?? "public");
+  const [scratchTable, setScratchTable] = React.useState("");
+  const [scratchGeomType, setScratchGeomType] = React.useState("Point");
+  const [scratchSrid, setScratchSrid] = React.useState("4326");
+  const [scratchCols, setScratchCols] = React.useState<{ name: string; type: "text" | "numeric" | "datetime" }[]>([]);
+  const [scratchPhase, setScratchPhase] = React.useState<"idle" | "creating" | "done" | "error">("idle");
+  const [scratchError, setScratchError] = React.useState("");
 
   // ── ArcGIS state ──────────────────────────────────────────────────────────
   const [arcUrl, setArcUrl] = React.useState("");
@@ -819,7 +828,9 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
   const [fileError, setFileError] = React.useState("");
 
   function reset() {
-    setActiveTab("arcgis");
+    setActiveTab("scratch");
+    setScratchSchema(defaultSchema ?? "public"); setScratchTable(""); setScratchGeomType("Point");
+    setScratchSrid("4326"); setScratchCols([]); setScratchPhase("idle"); setScratchError("");
     setArcUrl(""); setArcPhase("idle"); setArcMeta(null); setArcColMappings([]);
     setArcSchema(defaultSchema ?? "public"); setArcTable("");
     setArcProgress({ done: 0, total: 0 }); setArcError("");
@@ -934,6 +945,36 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
   }
 
 
+
+  // ── From scratch functions ────────────────────────────────────────────────
+
+  async function createFromScratch() {
+    setScratchPhase("creating");
+    setScratchError("");
+    const srid = parseInt(scratchSrid, 10);
+    const res = await fetch("/api/pg/create-table", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        connectionId,
+        schema: scratchSchema,
+        table: scratchTable,
+        geomType: scratchGeomType,
+        srid: isNaN(srid) ? 4326 : srid,
+        columns: scratchCols.map((c) => ({ name: c.name, type: c.type })),
+        timestamps: false,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setScratchError(data.error ?? "Failed to create table");
+      setScratchPhase("error");
+      return;
+    }
+    setScratchPhase("done");
+    onCreated();
+    onOpenChange(false);
+  }
 
   // ── File import functions ─────────────────────────────────────────────────
 
@@ -1181,17 +1222,108 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import Table</DialogTitle>
+          <DialogTitle>Create Table</DialogTitle>
           <DialogDescription>
-            Import data from an ArcGIS Feature Server or a local file.
+            Create an empty table, or import from an ArcGIS Feature Server or a local file.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
           <TabsList className="w-full">
-            <TabsTrigger value="arcgis" className="flex-1">ArcGIS</TabsTrigger>
-            <TabsTrigger value="file" className="flex-1">File</TabsTrigger>
+            <TabsTrigger value="scratch" className="flex-1 text-xs">From scratch</TabsTrigger>
+            <TabsTrigger value="arcgis" className="flex-1 text-xs">From ArcGIS</TabsTrigger>
+            <TabsTrigger value="file" className="flex-1 text-xs">From File</TabsTrigger>
           </TabsList>
+
+          {/* ── From scratch tab ── */}
+          <TabsContent value="scratch">
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="scratch-schema" className="text-xs">Schema</Label>
+                  <Input id="scratch-schema" value={scratchSchema} onChange={(e) => setScratchSchema(e.target.value)} className="h-8 text-sm" placeholder="public" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scratch-table" className="text-xs">Table name</Label>
+                  <Input id="scratch-table" value={scratchTable} onChange={(e) => setScratchTable(e.target.value)} className="h-8 text-sm" placeholder="my_table" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Geometry type</Label>
+                  <Select value={scratchGeomType} onValueChange={setScratchGeomType}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Point">Point</SelectItem>
+                      <SelectItem value="MultiPoint">MultiPoint</SelectItem>
+                      <SelectItem value="LineString">LineString</SelectItem>
+                      <SelectItem value="MultiLineString">MultiLineString</SelectItem>
+                      <SelectItem value="Polygon">Polygon</SelectItem>
+                      <SelectItem value="MultiPolygon">MultiPolygon</SelectItem>
+                      <SelectItem value="Geometry">Geometry (any)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scratch-srid" className="text-xs">SRID</Label>
+                  <Input id="scratch-srid" value={scratchSrid} onChange={(e) => setScratchSrid(e.target.value)} className="h-8 text-sm" placeholder="4326" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Columns (optional)</Label>
+                  <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => setScratchCols([...scratchCols, { name: "", type: "text" }])}>
+                    <Plus className="h-3 w-3 mr-1" />Add column
+                  </Button>
+                </div>
+                {scratchCols.length > 0 && (
+                  <div className="rounded-md border divide-y max-h-40 overflow-y-auto">
+                    {scratchCols.map((col, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_5rem_1.5rem] gap-2 items-center px-2 py-1.5">
+                        <Input
+                          value={col.name}
+                          onChange={(e) => setScratchCols(scratchCols.map((c, j) => j === i ? { ...c, name: e.target.value } : c))}
+                          placeholder="column_name"
+                          className={`h-6 text-xs px-1.5 ${col.name && !VALID_IDENT_RE.test(col.name) ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        />
+                        <Select value={col.type} onValueChange={(v) => setScratchCols(scratchCols.map((c, j) => j === i ? { ...c, type: v as "text" | "numeric" | "datetime" } : c))}>
+                          <SelectTrigger className="h-6 text-xs px-1.5"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="text" className="text-xs">text</SelectItem>
+                            <SelectItem value="numeric" className="text-xs">numeric</SelectItem>
+                            <SelectItem value="datetime" className="text-xs">datetime</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <button onClick={() => setScratchCols(scratchCols.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive flex items-center justify-center">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">An <span className="font-mono">id SERIAL PRIMARY KEY</span> and <span className="font-mono">geom</span> column are added automatically.</p>
+              </div>
+
+              {scratchError && <p className="text-sm text-destructive break-words">{scratchError}</p>}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                <Button
+                  onClick={createFromScratch}
+                  disabled={
+                    !scratchTable.trim() || !scratchSchema.trim() ||
+                    !VALID_IDENT_RE.test(scratchTable.trim()) || !VALID_IDENT_RE.test(scratchSchema.trim()) ||
+                    scratchCols.some((c) => !c.name.trim() || !VALID_IDENT_RE.test(c.name)) ||
+                    scratchPhase === "creating"
+                  }
+                >
+                  {scratchPhase === "creating" ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating…</> : "Create Table"}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
 
           {/* ── ArcGIS tab ── */}
           <TabsContent value="arcgis">
@@ -1204,7 +1336,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                     placeholder="https://services.arcgis.com/…/FeatureServer/0"
                     value={arcUrl}
                     onChange={(e) => setArcUrl(e.target.value)}
-                    className="font-mono text-xs"
+                    className="text-xs"
                     disabled={arcPhase === "importing" || arcPhase === "done"}
                     onKeyDown={(e) => { if (e.key === "Enter" && arcPhase === "idle") loadArcMeta(); }}
                   />
@@ -1248,11 +1380,11 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="arc-schema" className="text-xs">Schema</Label>
-                    <Input id="arc-schema" value={arcSchema} onChange={(e) => setArcSchema(e.target.value)} className="h-8 text-sm font-mono" placeholder="public" />
+                    <Input id="arc-schema" value={arcSchema} onChange={(e) => setArcSchema(e.target.value)} className="h-8 text-sm" placeholder="public" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="arc-table" className="text-xs">Table name</Label>
-                    <Input id="arc-table" value={arcTable} onChange={(e) => setArcTable(e.target.value)} className="h-8 text-sm font-mono" placeholder="my_layer" />
+                    <Input id="arc-table" value={arcTable} onChange={(e) => setArcTable(e.target.value)} className="h-8 text-sm" placeholder="my_layer" />
                   </div>
                 </div>
               )}
@@ -1300,7 +1432,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                       </>
                     ) : (
                       <><span>Click to select or drag & drop</span>
-                      <span className="text-xs font-mono">.gpkg .geojson .kml .shp .zip .csv .xlsx</span></>
+                      <span className="text-xs">.gpkg .geojson .kml .shp .zip .csv .xlsx</span></>
                     )}
                     <input id="file-input" type="file"
                       accept=".gpkg,.geojson,.kml,.shp,.zip,.csv,.xlsx,.xls"
@@ -1311,8 +1443,8 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                   </label>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     <span className="font-semibold">CSV / XLSX:</span> must have{" "}
-                    <span className="font-mono">latitude</span> + <span className="font-mono">longitude</span> columns (or <span className="font-mono">lat</span>/<span className="font-mono">lon</span>, <span className="font-mono">y</span>/<span className="font-mono">x</span>),
-                    or a <span className="font-mono">wkt_geometry</span> column with WKT values. All other columns become attributes.
+                    <span className="">latitude</span> + <span className="font-mono">longitude</span> columns (or <span className="font-mono">lat</span>/<span className="font-mono">lon</span>, <span className="font-mono">y</span>/<span className="font-mono">x</span>),
+                    or a <span className="">wkt_geometry</span> column with WKT values. All other columns become attributes.
                   </p>
                 </div>
               )}
@@ -1346,7 +1478,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
 
               {filePhase === "ready" && fileIsRawShp && (
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  No attributes — only geometry was found. To include attributes, restart and upload a <span className="font-mono">.zip</span> containing the <span className="font-mono">.shp</span>, <span className="font-mono">.dbf</span>, and <span className="font-mono">.prj</span> files together.
+                  No attributes — only geometry was found. To include attributes, restart and upload a <span className="">.zip</span> containing the <span className="font-mono">.shp</span>, <span className="font-mono">.dbf</span>, and <span className="font-mono">.prj</span> files together.
                 </div>
               )}
 
@@ -1354,11 +1486,11 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="file-schema" className="text-xs">Schema</Label>
-                    <Input id="file-schema" value={fileSchema} onChange={(e) => setFileSchema(e.target.value)} className="h-8 text-sm font-mono" placeholder="public" />
+                    <Input id="file-schema" value={fileSchema} onChange={(e) => setFileSchema(e.target.value)} className="h-8 text-sm" placeholder="public" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="file-table" className="text-xs">Table name</Label>
-                    <Input id="file-table" value={fileTable} onChange={(e) => setFileTable(e.target.value)} className="h-8 text-sm font-mono" placeholder="my_layer" />
+                    <Input id="file-table" value={fileTable} onChange={(e) => setFileTable(e.target.value)} className="h-8 text-sm" placeholder="my_layer" />
                   </div>
                 </div>
               )}
@@ -1398,7 +1530,7 @@ function ColMappingTable({ mappings, onChange }: { mappings: ColMapping[]; onCha
   return (
     <div className="space-y-1.5">
       <p className="text-[11px] text-muted-foreground">
-        A new <span className="font-mono">id SERIAL PRIMARY KEY</span> is auto-generated. Any source ID column is mapped to <span className="font-mono">source_id</span> by default.
+        A new <span className="">id SERIAL PRIMARY KEY</span> is auto-generated. Any source ID column is mapped to <span className="font-mono">source_id</span> by default.
       </p>
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground uppercase tracking-wide">Column mapping</Label>
@@ -1418,11 +1550,11 @@ function ColMappingTable({ mappings, onChange }: { mappings: ColMapping[]; onCha
               <input type="checkbox" checked={col.include}
                 onChange={(e) => onChange(mappings.map((c, j) => j === i ? { ...c, include: e.target.checked } : c))}
                 className="h-3 w-3" />
-              <span className="text-xs font-mono truncate text-muted-foreground">{col.origName}</span>
+              <span className="text-xs truncate text-muted-foreground">{col.origName}</span>
               <Input value={col.pgName}
                 onChange={(e) => onChange(mappings.map((c, j) => j === i ? { ...c, pgName: e.target.value } : c))}
                 disabled={!col.include}
-                className={`h-6 text-xs font-mono px-1.5 ${!nameValid && col.include ? "border-destructive focus-visible:ring-destructive" : ""}`} />
+                className={`h-6 text-xs px-1.5 ${!nameValid && col.include ? "border-destructive focus-visible:ring-destructive" : ""}`} />
               <Select value={col.type} onValueChange={(v) => onChange(mappings.map((c, j) => j === i ? { ...c, type: v as "text" | "numeric" | "datetime" } : c))} disabled={!col.include}>
                 <SelectTrigger className="h-6 text-xs px-1.5"><SelectValue /></SelectTrigger>
                 <SelectContent>

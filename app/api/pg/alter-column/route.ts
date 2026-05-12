@@ -44,14 +44,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "drop") {
-      if (!VALID_IDENT.test(column))
-        return NextResponse.json({ error: "Invalid column name" }, { status: 400 });
+      if (!column || typeof column !== "string")
+        return NextResponse.json({ error: "Missing column name" }, { status: 400 });
       await client.query(`ALTER TABLE ${tbl} DROP COLUMN ${ident(column)}`);
       return NextResponse.json({ success: true });
     }
 
     if (action === "rename") {
-      if (!VALID_IDENT.test(column) || !VALID_IDENT.test(newName))
+      if (!column || typeof column !== "string" || !VALID_IDENT.test(newName))
         return NextResponse.json({ error: "Invalid column name" }, { status: 400 });
       await client.query(
         `ALTER TABLE ${tbl} RENAME COLUMN ${ident(column)} TO ${ident(newName)}`

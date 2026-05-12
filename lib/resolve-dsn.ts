@@ -2,22 +2,35 @@ import { decryptDsn } from "./dsn-token";
 import { getConnection } from "./connections-store";
 import { getShare } from "./share-store";
 
-/** Resolve a named connection by its server-side ID. */
+const dsnCache = new Map<string, string>();
+
+/** Resolve a named connection by its server-side ID. Result is cached in-process. */
 export async function resolveConnectionDsn(connectionId: string): Promise<string> {
-  return getConnection(connectionId);
+  if (dsnCache.has(connectionId)) return dsnCache.get(connectionId)!;
+  const dsn = await getConnection(connectionId);
+  dsnCache.set(connectionId, dsn);
+  return dsn;
+}
+
+/** Remove a connection's DSN from the in-process cache. Call on connection delete. */
+export function evictDsnCache(connectionId: string): void {
+  dsnCache.delete(connectionId);
 }
 
 /**
  * Unified resolver used by all API routes.
  * Priority: connectionId > shareId > dsn token (legacy)
+ * schema + table are forwarded to resolveShareDsn for per-layer connection lookup.
  */
 export async function resolveDsnFromRequest(params: {
   connectionId?: string | null;
   shareId?: string | null;
   dsn?: string | null;
+  schema?: string | null;
+  table?: string | null;
 }): Promise<string> {
   if (params.connectionId) return await resolveConnectionDsn(params.connectionId);
-  if (params.shareId) return resolveShareDsn(params.shareId);
+  if (params.shareId) return resolveShareDsn(params.shareId, params.schema ?? undefined, params.table ?? undefined);
   if (params.dsn) return resolveDsn(params.dsn);
   throw new Error("No connection provided");
 }
@@ -38,13 +51,19 @@ export function resolveDsn(token: string | null | undefined): string {
 }
 
 /**
- * Resolve DSN for a public share. Looks up the share's connectionId server-side;
- * falls back to raw DSN stored in legacy share files.
+ * Resolve DSN for a public share. Uses connectionMap for per-layer connection
+ * lookup when schema+table are provided; falls back to the share's primary connectionId.
  */
-export async function resolveShareDsn(shareId: string | null | undefined): Promise<string> {
+export async function resolveShareDsn(shareId: string | null | undefined, schema?: string, table?: string): Promise<string> {
   if (!shareId || !/^[a-zA-Z0-9_-]{1,40}$/.test(shareId)) throw new Error("Invalid shareId");
-  const config = await getShare(shareId);
+  const result = await getShare(shareId);
+  if (result.isExpired) throw new Error("Share has expired");
+  const config = result.config;
   if (!config) throw new Error("Share not found");
+  if (schema && table && config.connectionMap) {
+    const layerConnId = config.connectionMap[`${schema}.${table}`];
+    if (layerConnId) return await resolveConnectionDsn(layerConnId);
+  }
   if (config.connectionId) return await resolveConnectionDsn(config.connectionId);
   if (config.dsn && typeof config.dsn === "string" && config.dsn.length > 0) return config.dsn;
   throw new Error("Share has no connection");

@@ -1,12 +1,10 @@
 "use client";
 import React from "react";
-import type { TableRow, MapLayer, LayerControl, AttrOperator, FillColorRule, TemporalMode } from "@/lib/types";
-import { BASEMAP_OPTIONS } from "@/lib/types";
+import type { TableRow, MapLayer, LayerControl, AttrOperator, FillColorRule, TemporalMode, ColorRange } from "@/lib/types";
 import { CreateTableDialog } from "@/components/create-table-dialog";
 import { ImportTasksPanel } from "@/components/import-tasks-panel";
 import { DeleteTableDialog } from "@/components/delete-table-dialog";
 import { RenameTableDialog } from "@/components/rename-table-dialog";
-import { AttributeTableDialog } from "@/components/attribute-table-dialog";
 import { TableInfoDialog } from "@/components/table-info-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -20,14 +18,15 @@ import {
 import {
   ChevronDown, ChevronRight, Eye, EyeOff, X, Plus,
   Check, MapPin, TriangleAlert, Maximize2, Folder, GripVertical, Table2, Globe, Lock,
-  Calendar, Hash, List, Filter, Paintbrush, Sliders, Tag, PanelLeftClose, PanelLeft,
+  Calendar, Hash, List, Filter, Paintbrush, Sliders, Tag, PanelLeftClose, PanelLeft, Database, Settings2,
 } from "lucide-react";
 
 interface Props {
   connectionId: string;
   connectionLoaded?: boolean;
+  connectionsKey?: number;
   layers: MapLayer[];
-  onAddLayer: (table: TableRow) => void;
+  onAddLayer: (table: TableRow, connId: string) => void;
   onRemoveLayer: (id: string) => void;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
   onReorderLayers: (newOrder: string[]) => void;
@@ -38,8 +37,6 @@ interface Props {
   onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
   onOpenSettings?: () => void;
   onConnectionLost?: () => void;
-  basemap: string;
-  onBasemapChange: (key: string) => void;
 }
 
 // ─── connection error helper ─────────────────────────────────────────────────
@@ -83,6 +80,7 @@ const CAT_COLORS = [
   "#a65628","#f781bf","#ffed6f","#66c2a5","#fc8d62",
   "#8da0cb","#e78ac3",
 ];
+const MAX_CAT_COLORS = 10;
 
 
 
@@ -134,7 +132,7 @@ function InValuePicker({
       {distinctValues!.map((v) => (
         <label key={v} className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-muted/40 cursor-pointer min-w-0 max-w-50">
           <input type="checkbox" checked={selected.has(v)} onChange={() => toggle(v)} className="h-3 w-3 shrink-0" />
-          <span className="text-[11px] truncate font-mono min-w-0 flex-1" title={v}>{v}</span>
+          <span className="text-[11px] truncate min-w-0 flex-1" title={v}>{v}</span>
         </label>
       ))}
       {distinctValues!.length === 0 && (
@@ -237,6 +235,28 @@ function TemporalHistogram({ snapPoints, snapCounts, activeFrom, activeTo, mode 
   );
 }
 
+function GeomTypeIcon({ gt, color }: { gt: string; color: string }) {
+  const isPoint = gt.includes("point");
+  const isLine  = gt.includes("line");
+  return (
+    <div className="w-7 h-7 rounded-md bg-foreground/8 flex items-center justify-center shrink-0 border border-foreground/8">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        {isPoint ? (
+          <>
+            <circle cx="4"   cy="11" r="2.5" fill={color} />
+            <circle cx="12"  cy="4"  r="2"   fill={color} opacity="0.65" />
+            <circle cx="9"   cy="10" r="1.5" fill={color} opacity="0.4" />
+          </>
+        ) : isLine ? (
+          <path d="M1.5 13.5 L5.5 7 L9.5 10 L14.5 2.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+          <path d="M8 1.5 L14 6.5 L11.5 14 L4.5 14 L2 6.5 Z" fill={color} fillOpacity="0.45" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        )}
+      </svg>
+    </div>
+  );
+}
+
 function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
   f: Extract<LayerControl, { type: "temporal" }>;
   layer: MapLayer; connectionId: string;
@@ -321,11 +341,11 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
       <div className="flex items-center gap-1">
         <span className="text-[10px] text-muted-foreground w-12 shrink-0">Column</span>
         <Select value={f.column} onValueChange={fetchExtent}>
-          <SelectTrigger className="h-6 text-[11px] flex-1 font-mono">
+          <SelectTrigger className="h-6 text-[11px] flex-1">
             <SelectValue placeholder={loadingExtent ? "Loading…" : "select column"} />
           </SelectTrigger>
           <SelectContent>
-            {cols.map(c => <SelectItem key={c} value={c} className="text-xs font-mono">{c}</SelectItem>)}
+            {cols.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -380,147 +400,352 @@ function TemporalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
   );
 }
 
+// ─── add-value row (sub-component to allow useState) ─────────────────────────
 // ─── categorical filter editor ────────────────────────────────────────────────
-function CategoricalFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
+function CategoricalFilterEditor({ f, layer, connectionId, onUpdateLayer, inline }: {
   f: Extract<LayerControl, { type: "categorical" }>;
   layer: MapLayer; connectionId: string;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  inline?: boolean;
 }) {
-  const [allValues, setAllValues] = React.useState<string[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [dbValues, setDbValues]     = React.useState<string[] | null>(null);
+  const [dbTruncated, setDbTruncated] = React.useState(false);
+  const [loadingDb, setLoadingDb]   = React.useState(false);
+  const [expandedIdx, setExpandedIdx] = React.useState<number | null>(null);
+  const [search, setSearch]         = React.useState("");
 
-  // Load allValues from rules if present, else fetch from DB
+  async function ensureDbValues() {
+    if (dbValues !== null) return;
+    setLoadingDb(true);
+    try {
+      const r = await fetch("/api/pg/column-values", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: f.column }),
+      });
+      const d = await r.json();
+      setDbValues(d.values ?? []);
+      setDbTruncated(d.truncated ?? false);
+    } catch {}
+    finally { setLoadingDb(false); }
+  }
+
+  // Auto-init: fetch values and create one step per value (up to MAX_CAT_COLORS)
   React.useEffect(() => {
-    if (!f.column) return;
-    if (f.rules.length > 0) { setAllValues(f.rules.map(r => r.value)); return; }
-    setLoading(true);
-    fetch("/api/pg/column-values", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: f.column }) })
+    if (!f.column || f.rules.length > 0) return;
+    setLoadingDb(true);
+    fetch("/api/pg/column-values", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: f.column }),
+    })
       .then(r => r.json())
       .then(d => {
         const vals: string[] = d.values ?? [];
-        setAllValues(vals);
-        // Auto-assign colors if rules are empty
-        if (vals.length > 0 && f.rules.length === 0) {
-          update({ rules: vals.map((v, i) => ({ value: v, color: CAT_COLORS[i % CAT_COLORS.length] })) });
+        setDbValues(vals);
+        setDbTruncated(d.truncated ?? false);
+        if (vals.length > 0) {
+          update({ rules: vals.slice(0, MAX_CAT_COLORS).map((v, i) => ({ values: [v], color: CAT_COLORS[i] })) });
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingDb(false));
   }, [f.column, layer.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function update(patch: Partial<typeof f>) {
     onUpdateLayer(layer.id, { controls: layer.controls.map(fi => fi.id === f.id ? { ...fi, ...patch } : fi) as LayerControl[] });
   }
 
-  function toggleValue(val: string) {
+  function updateStepColor(idx: number, color: string) {
+    update({ rules: f.rules.map((r, i) => i === idx ? { ...r, color } : r) });
+  }
+
+  function removeStep(idx: number) {
+    update({ rules: f.rules.filter((_, i) => i !== idx) });
+    if (expandedIdx === idx) setExpandedIdx(null);
+    else if (expandedIdx !== null && expandedIdx > idx) setExpandedIdx(expandedIdx - 1);
+  }
+
+  function addValueToStep(stepIdx: number, val: string) {
+    update({ rules: f.rules.map((r, i) => i === stepIdx ? { ...r, values: [...r.values, val] } : r) });
+  }
+
+  function removeValueFromStep(stepIdx: number, val: string) {
+    update({ rules: f.rules.map((r, i) => i === stepIdx ? { ...r, values: r.values.filter(v => v !== val) } : r) });
+  }
+
+  function addAllToStep(stepIdx: number, vals: string[]) {
+    update({ rules: f.rules.map((r, i) => i === stepIdx ? { ...r, values: [...r.values, ...vals] } : r) });
+  }
+
+  function clearStep(stepIdx: number) {
+    update({ rules: f.rules.map((r, i) => i === stepIdx ? { ...r, values: [] } : r) });
+  }
+
+  function addStep() {
+    const newIdx = f.rules.length;
+    update({ rules: [...f.rules, { values: [], color: CAT_COLORS[newIdx % CAT_COLORS.length] }] });
+    setExpandedIdx(newIdx);
+    setSearch("");
+    ensureDbValues();
+  }
+
+  function toggleStepVisibility(stepIdx: number) {
+    const stepVals = f.rules[stepIdx].values;
     const hidden = new Set(f.hiddenValues);
-    if (hidden.has(val)) hidden.delete(val); else hidden.add(val);
+    const allHidden = stepVals.length > 0 && stepVals.every(v => hidden.has(v));
+    if (allHidden) stepVals.forEach(v => hidden.delete(v));
+    else stepVals.forEach(v => hidden.add(v));
     update({ hiddenValues: [...hidden] });
   }
 
-  function setRuleColor(val: string, color: string) {
-    const rules = f.rules.map(r => r.value === val ? { ...r, color } : r);
-    update({ rules });
+  // All values already claimed by any step
+  const allAssigned = new Set(f.rules.flatMap(r => r.values));
+
+  return (
+    <div className="space-y-1 mt-1">
+      {!inline && <p className="text-[10px] text-muted-foreground">{f.column}</p>}
+      {!inline && (
+        <div className="flex items-center gap-1.5 mb-1">
+          <div className={`w-2 h-2 rounded-full border shrink-0 ${f.enabled ? "bg-primary border-primary" : "border-muted-foreground"}`} />
+          <span className="text-[10px] text-muted-foreground">
+            {f.enabled ? "Colors applied to map" : "Enable control to apply colors"}
+          </span>
+        </div>
+      )}
+      {!inline && f.rules.length > 0 && (
+        <div className="flex gap-2 mb-1">
+          <button onClick={() => update({ hiddenValues: [] })} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Show all</button>
+          <button onClick={() => update({ hiddenValues: f.rules.flatMap(r => r.values) })} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Hide all</button>
+        </div>
+      )}
+
+      {loadingDb && f.rules.length === 0 && <p className="text-[10px] text-muted-foreground">Loading values…</p>}
+
+      {/* Steps */}
+      {f.rules.map((rule, stepIdx) => {
+        const isExpanded = expandedIdx === stepIdx;
+        // Values available to add to THIS step = DB values not in any OTHER step, and not already in this step
+        const assignedElsewhere = new Set(f.rules.flatMap((r, i) => i !== stepIdx ? r.values : []));
+        const available = (dbValues ?? []).filter(v => !assignedElsewhere.has(v) && !rule.values.includes(v));
+        const filtered = search && isExpanded ? available.filter(v => v.toLowerCase().includes(search.toLowerCase())) : available;
+        const stepHidden = !inline && rule.values.length > 0 && rule.values.every(v => f.hiddenValues.includes(v));
+
+        return (
+          <div key={stepIdx}>
+            {/* Step header row */}
+            <div
+              onClick={() => { setExpandedIdx(isExpanded ? null : stepIdx); if (!isExpanded) { setSearch(""); ensureDbValues(); } }}
+              className={`flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer group ${isExpanded ? "bg-muted/50" : "hover:bg-muted/30"}`}
+            >
+              {!inline && (
+                <button onClick={e => { e.stopPropagation(); toggleStepVisibility(stepIdx); }}
+                  className={`w-3 h-3 rounded border shrink-0 flex items-center justify-center transition-colors ${stepHidden ? "border-muted-foreground" : "bg-primary border-primary"}`}>
+                  {!stepHidden && <Check className="h-2 w-2 text-primary-foreground" />}
+                </button>
+              )}
+              <label className="cursor-pointer shrink-0 z-10" onClick={e => e.stopPropagation()} title="Change color">
+                <span className="block w-4 h-4 rounded border border-border/60 shadow-sm ring-1 ring-transparent group-hover:ring-border transition-all"
+                  style={{ backgroundColor: rule.color }} />
+                <input type="color" className="sr-only" value={rule.color}
+                  onChange={e => updateStepColor(stepIdx, e.target.value)} />
+              </label>
+              <span className={`text-[11px] flex-1 truncate ${stepHidden ? "line-through text-muted-foreground" : ""}`}>
+                {rule.values.length === 0
+                  ? <em className="text-muted-foreground text-[10px]">No values — click to add</em>
+                  : <>
+                      {rule.values.slice(0, 2).join(", ")}
+                      {rule.values.length > 2 && <span className="text-muted-foreground"> +{rule.values.length - 2} more</span>}
+                    </>
+                }
+              </span>
+              <button onClick={e => { e.stopPropagation(); removeStep(stepIdx); }}
+                className="ml-auto text-muted-foreground hover:text-destructive p-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Expanded panel */}
+            {isExpanded && (
+              <div className="ml-6 pb-2 pt-1 space-y-1.5 border-l border-border/40 pl-2 ml-3">
+                {/* Current value chips */}
+                {rule.values.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {rule.values.map(v => (
+                      <span key={v} className="inline-flex items-center gap-0.5 text-[10px] bg-muted border border-border/50 rounded-sm px-1.5 py-0.5 max-w-[160px]">
+                        <span className="truncate">{v === "" ? <em>empty</em> : v}</span>
+                        <button onClick={() => removeValueFromStep(stepIdx, v)}
+                          className="hover:text-destructive ml-0.5 shrink-0 transition-colors">
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search / custom value input */}
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search or type a custom value…"
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      const v = search.trim();
+                      if (v && !rule.values.includes(v)) { addValueToStep(stepIdx, v); setSearch(""); }
+                    }
+                  }}
+                  className="w-full text-[11px] bg-muted/30 border border-border/50 rounded px-1.5 py-0.5 outline-none focus:border-primary"
+                />
+                {search.trim() && !rule.values.includes(search.trim()) && (
+                  <button
+                    onClick={() => { addValueToStep(stepIdx, search.trim()); setSearch(""); }}
+                    className="text-[10px] text-primary hover:text-primary/80 transition-colors"
+                  >
+                    Add "{search.trim()}"
+                  </button>
+                )}
+
+                {/* Select the Rest / Reset */}
+                {!loadingDb && available.length > 0 && (
+                  <div className="flex gap-2">
+                    <button onClick={() => addAllToStep(stepIdx, available)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                      Select the Rest
+                    </button>
+                    {rule.values.length > 0 && (
+                      <button onClick={() => clearStep(stepIdx)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Available values list */}
+                <div className="max-h-36 overflow-y-auto space-y-px">
+                  {loadingDb && <p className="text-[10px] text-muted-foreground px-1">Loading…</p>}
+                  {!loadingDb && filtered.length === 0 && (
+                    <p className="text-[10px] text-muted-foreground px-1">
+                      {search ? "No matches" : available.length === 0 ? "All values assigned" : ""}
+                    </p>
+                  )}
+                  {!loadingDb && filtered.map(v => (
+                    <button key={v} onClick={() => addValueToStep(stepIdx, v)}
+                      className="w-full text-left px-1.5 py-0.5 text-[11px] hover:bg-muted/60 rounded transition-colors">
+                      {v === "" ? <em className="text-muted-foreground">empty</em> : v}
+                    </button>
+                  ))}
+                  {!loadingDb && !search && dbTruncated && available.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground px-1 pt-1 border-t">List capped at 100 distinct values.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* All others */}
+      <div className={`flex items-center gap-2 pt-1 mt-0.5 ${f.rules.length > 0 ? "border-t" : ""}`}>
+        <label className="cursor-pointer flex items-center gap-2" title="Color for all other values">
+          <span className="block w-4 h-4 rounded border border-border/60 shadow-sm shrink-0"
+            style={{ backgroundColor: f.defaultColor }} />
+          <span className="text-[11px] text-muted-foreground italic">All others</span>
+          <input type="color" className="sr-only" value={f.defaultColor}
+            onChange={e => update({ defaultColor: e.target.value })} />
+        </label>
+      </div>
+
+      {/* Add Step */}
+      <button onClick={addStep}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors pt-0.5">
+        <Plus className="h-3 w-3" />
+        Add Step
+      </button>
+    </div>
+  );
+}
+
+// ─── multi-range editor ────────────────────────────────────────────────────────
+function MultiRangeEditor({ f, layer, onUpdateLayer }: {
+  f: Extract<LayerControl, { type: "threshold" }>;
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+}) {
+  const ranges = f.ranges ?? [];
+
+  function update(patch: Partial<typeof f>) {
+    onUpdateLayer(layer.id, { controls: layer.controls.map(fi => fi.id === f.id ? { ...fi, ...patch } : fi) as LayerControl[] });
+  }
+
+  function updateRange(idx: number, patch: Partial<ColorRange>) {
+    update({ ranges: ranges.map((r, i) => i === idx ? { ...r, ...patch } : r) });
+  }
+
+  function deleteRange(idx: number) {
+    update({ ranges: ranges.filter((_, i) => i !== idx) });
+  }
+
+  function addRange() {
+    const last = ranges[ranges.length - 1];
+    const from = last?.to ?? 0;
+    update({ ranges: [...ranges, { from, to: from + 10, color: CAT_COLORS[ranges.length % CAT_COLORS.length] }] });
   }
 
   return (
-    <div className="space-y-2 mt-1">
-      <p className="text-[10px] text-muted-foreground font-mono">{f.column}</p>
-
-      {/* Style on/off indicator */}
-      <div className="flex items-center gap-1.5">
-        <div className={`w-2 h-2 rounded-full border shrink-0 ${f.enabled ? "bg-primary border-primary" : "border-muted-foreground"}`} />
-        <span className="text-[10px] text-muted-foreground">
-          {f.enabled ? "Colors applied to map" : "Colors not applied — enable control to use"}
-        </span>
+    <div className="space-y-1 mt-1">
+      {ranges.map((r, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <label className="cursor-pointer shrink-0" title="Click to change color">
+            <span className="block w-4 h-4 rounded border border-border/60 shadow-sm" style={{ backgroundColor: r.color }} />
+            <input type="color" className="sr-only" value={r.color} onChange={e => updateRange(i, { color: e.target.value })} />
+          </label>
+          <input
+            type="number"
+            value={r.from ?? ""}
+            placeholder="min"
+            onChange={e => updateRange(i, { from: e.target.value === "" ? null : parseFloat(e.target.value) })}
+            className="w-16 text-[11px] bg-muted/30 border rounded px-1.5 py-0.5 outline-none focus:border-primary h-6 min-w-0"
+          />
+          <span className="text-[10px] text-muted-foreground shrink-0">–</span>
+          <input
+            type="number"
+            value={r.to ?? ""}
+            placeholder="max"
+            onChange={e => updateRange(i, { to: e.target.value === "" ? null : parseFloat(e.target.value) })}
+            className="w-16 text-[11px] bg-muted/30 border rounded px-1.5 py-0.5 outline-none focus:border-primary h-6 min-w-0"
+          />
+          <button onClick={() => deleteRange(i)} className="ml-auto text-muted-foreground hover:text-destructive p-0.5 transition-colors">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 pt-1.5 border-t mt-0.5">
+        <label className="cursor-pointer flex items-center gap-2" title="Color for values outside all ranges">
+          <span className="block w-4 h-4 rounded border border-border/60 shrink-0" style={{ backgroundColor: f.defaultColor ?? "#aaaaaa" }} />
+          <span className="text-[11px] text-muted-foreground italic">All others</span>
+          <input type="color" className="sr-only" value={f.defaultColor ?? "#aaaaaa"} onChange={e => update({ defaultColor: e.target.value })} />
+        </label>
       </div>
-
-      {loading && <p className="text-[10px] text-muted-foreground">Loading values…</p>}
-      {!loading && allValues.length === 0 && <p className="text-[10px] text-muted-foreground">No values found.</p>}
-      {allValues.length > 0 && (
-        <>
-          <div className="flex gap-2">
-            <button onClick={() => update({ hiddenValues: [] })} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Show all</button>
-            <button onClick={() => update({ hiddenValues: [...allValues] })} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Hide all</button>
-          </div>
-          <div className="space-y-0.5 max-h-44 overflow-y-auto">
-            {allValues.map(val => {
-              const hidden = f.hiddenValues.includes(val);
-              const colorRule = f.rules.find(r => r.value === val);
-              return (
-                <div key={val} className="flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-muted/40">
-                  {/* Visibility toggle */}
-                  <button onClick={() => toggleValue(val)}
-                    className={`w-3 h-3 rounded border shrink-0 flex items-center justify-center transition-colors ${hidden ? "border-muted-foreground" : "bg-primary border-primary"}`}>
-                    {!hidden && <Check className="h-2 w-2 text-primary-foreground" />}
-                  </button>
-                  {/* Color swatch + picker */}
-                  <label className="cursor-pointer shrink-0">
-                    <span className="block w-3.5 h-3.5 rounded-sm border border-border"
-                      style={{ backgroundColor: colorRule?.color ?? f.defaultColor }} />
-                    <input type="color" className="sr-only" value={colorRule?.color ?? f.defaultColor}
-                      onChange={e => setRuleColor(val, e.target.value)} />
-                  </label>
-                  <span className={`text-[10px] truncate flex-1 ${hidden ? "line-through text-muted-foreground" : ""}`}>{val}</span>
-                </div>
-              );
-            })}
-          </div>
-          {/* Default color for unmatched values */}
-          <div className="flex items-center gap-1.5 pt-1 border-t">
-            <label className="cursor-pointer flex items-center gap-1.5">
-              <span className="block w-3.5 h-3.5 rounded-sm border border-border shrink-0"
-                style={{ backgroundColor: f.defaultColor }} />
-              <span className="text-[10px] text-muted-foreground">Other</span>
-              <input type="color" className="sr-only" value={f.defaultColor}
-                onChange={e => update({ defaultColor: e.target.value })} />
-            </label>
-          </div>
-        </>
-      )}
+      <button onClick={addRange}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors pt-0.5">
+        <Plus className="h-3 w-3" />
+        Add range
+      </button>
     </div>
   );
 }
 
 // ─── threshold color editor ───────────────────────────────────────────────────
-function ThresholdControlEditor({ f, layer, onUpdateLayer }: {
+function ThresholdControlEditor({ f, layer, onUpdateLayer, inline }: {
   f: Extract<LayerControl, { type: "threshold" }>;
   layer: MapLayer;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  inline?: boolean;
 }) {
-  function update(patch: Partial<typeof f>) {
-    onUpdateLayer(layer.id, { controls: layer.controls.map(fi => fi.id === f.id ? { ...fi, ...patch } : fi) as LayerControl[] });
-  }
-
   return (
-    <div className="space-y-2 mt-1">
-      <p className="text-[10px] text-muted-foreground font-mono">{f.column}</p>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted-foreground shrink-0">Threshold</span>
-        <input
-          type="number"
-          value={f.threshold}
-          onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) update({ threshold: v }); }}
-          className="flex-1 text-[11px] bg-muted/30 border rounded px-2 py-0.5 outline-none focus:border-primary font-mono min-w-0 h-6"
-        />
-      </div>
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <label className="cursor-pointer shrink-0">
-            <span className="block w-3.5 h-3.5 rounded-sm border border-border" style={{ backgroundColor: f.aboveColor }} />
-            <input type="color" className="sr-only" value={f.aboveColor} onChange={e => update({ aboveColor: e.target.value })} />
-          </label>
-          <span className="text-[10px] flex-1">≥ {f.threshold}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="cursor-pointer shrink-0">
-            <span className="block w-3.5 h-3.5 rounded-sm border border-border" style={{ backgroundColor: f.belowColor }} />
-            <input type="color" className="sr-only" value={f.belowColor} onChange={e => update({ belowColor: e.target.value })} />
-          </label>
-          <span className="text-[10px] flex-1">{"< "}{f.threshold}</span>
-        </div>
-      </div>
+    <div className="mt-1">
+      {!inline && <p className="text-[10px] text-muted-foreground mb-1">{f.column}</p>}
+      <MultiRangeEditor f={f} layer={layer} onUpdateLayer={onUpdateLayer} />
     </div>
   );
 }
@@ -611,8 +836,8 @@ function NumericFilterEditor({ f, layer, connectionId, onUpdateLayer }: {
       <div className="flex items-center gap-1">
         <span className="text-[10px] text-muted-foreground w-12 shrink-0">Column</span>
         <Select value={f.column} onValueChange={fetchExtent}>
-          <SelectTrigger className="h-6 text-[11px] flex-1 font-mono"><SelectValue placeholder="column" /></SelectTrigger>
-          <SelectContent>{cols.map(c => <SelectItem key={c} value={c} className="text-xs font-mono">{c}</SelectItem>)}</SelectContent>
+          <SelectTrigger className="h-6 text-[11px] flex-1"><SelectValue placeholder="column" /></SelectTrigger>
+          <SelectContent>{cols.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}</SelectContent>
         </Select>
       </div>
 
@@ -771,83 +996,465 @@ const TEMPORAL_TYPES = new Set([
 ]);
 
 // ─── fill control editor ──────────────────────────────────────────────────────
-function FillControlEditor({ f, layer, onUpdateLayer }: {
+function FillControlEditor({ f, layer, onUpdateLayer, nonGeomCols, connectionId }: {
   f: Extract<LayerControl, { type: "fill" }>;
   layer: MapLayer;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
 }) {
+  const [modeLoading, setModeLoading] = React.useState(false);
+
   function update(patch: Partial<typeof f>) {
     onUpdateLayer(layer.id, {
       controls: (layer.controls ?? []).map(c => c.id === f.id ? { ...c, ...patch } : c) as LayerControl[],
     });
   }
-  const gt = (layer.geomTypeOverride ?? layer.table.geom_type ?? "").toLowerCase();
-  const isPoint = !gt.includes("linestring") && !gt.includes("polygon");
-  const hasRadiusByValue = (layer.controls ?? []).some(c => c.type === "numeric" && c.enabled && (c as any).target === "radius");
+
+  const catFillCtrl    = (layer.controls ?? []).find(c => c.type === "categorical" && (c as any).target === "fill") as Extract<LayerControl, { type: "categorical" }> | undefined;
+  const threshFillCtrl = (layer.controls ?? []).find(c => c.type === "threshold"   && (c as any).target === "fill") as Extract<LayerControl, { type: "threshold"  }> | undefined;
+  const colorCtrl    = catFillCtrl ?? threshFillCtrl;
+  const colorBasedOn = colorCtrl?.column ?? "";
+
+  function removeColorCtrls(controls: LayerControl[]) {
+    return controls.filter(c => !(
+      (c.type === "categorical" && (c as any).target === "fill") ||
+      (c.type === "threshold"   && (c as any).target === "fill")
+    ));
+  }
+
+  async function handleColorBy(col: string) {
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: removeColorCtrls(layer.controls ?? []) });
+      return;
+    }
+    setModeLoading(true);
+    const isNumeric = NUMERIC_TYPES_SET.has(nonGeomCols.find(c => c.name === col)?.dataType ?? "");
+    try {
+      if (isNumeric) {
+        let dataMin = 0, dataMax = 100;
+        const res = await fetch("/api/pg/numeric-extent", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+        const data = await res.json();
+        if (data.min != null && data.max != null) { dataMin = data.min; dataMax = data.max; }
+        const step = (dataMax - dataMin) / 3 || 1;
+        const initialRanges: ColorRange[] = [
+          { from: dataMin,            to: dataMin + step,     color: "#3b82f6" },
+          { from: dataMin + step,     to: dataMin + step * 2, color: "#f59e0b" },
+          { from: dataMin + step * 2, to: dataMax,            color: "#ef4444" },
+        ];
+        const midpoint = Math.round((dataMin + dataMax) / 2);
+        const newCtrl: LayerControl = threshFillCtrl
+          ? { ...threshFillCtrl, column: col, threshold: midpoint, ranges: initialRanges, defaultColor: "#aaaaaa" }
+          : { id: crypto.randomUUID(), type: "threshold", enabled: true, shared: false, column: col,
+              threshold: midpoint, aboveColor: "#22c55e", belowColor: "#ef4444",
+              ranges: initialRanges, defaultColor: "#aaaaaa", target: "fill" };
+        onUpdateLayer(layer.id, {
+          controls: threshFillCtrl
+            ? (layer.controls ?? []).map(c => c.id === threshFillCtrl.id ? newCtrl : c) as LayerControl[]
+            : [...removeColorCtrls(layer.controls ?? []), newCtrl],
+        });
+      } else {
+        let rules: FillColorRule[] = [];
+        const res = await fetch("/api/pg/column-values", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+        const data = await res.json();
+        if (data.values?.length > 0) rules = (data.values as string[]).slice(0, MAX_CAT_COLORS).map((v, i) => ({ values: [v], color: CAT_COLORS[i] }));
+        const newCtrl: LayerControl = catFillCtrl
+          ? { ...catFillCtrl, column: col, rules }
+          : { id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: col, rules, defaultColor: "#aaaaaa", hiddenValues: [], target: "fill" };
+        onUpdateLayer(layer.id, {
+          controls: catFillCtrl
+            ? (layer.controls ?? []).map(c => c.id === catFillCtrl.id ? newCtrl : c) as LayerControl[]
+            : [...removeColorCtrls(layer.controls ?? []), newCtrl],
+        });
+      }
+    } catch {}
+    setModeLoading(false);
+  }
+
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Color</Label>
-        <label className="cursor-pointer flex items-center gap-1.5">
-          <span className="block w-4 h-4 rounded border border-border shrink-0" style={{ backgroundColor: f.color }} />
-          <span className="text-xs text-muted-foreground font-mono">{f.color}</span>
-          <input type="color" className="sr-only" value={f.color} onChange={e => update({ color: e.target.value })} />
-        </label>
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={colorBasedOn || "__none__"} onValueChange={handleColorBy} disabled={modeLoading}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Solid color" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Solid color</SelectItem>
+            {nonGeomCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Opacity</Label>
-        <Slider min={0} max={1} step={0.05} value={[f.opacity]} onValueChange={([v]) => update({ opacity: v })} />
-        <span className="text-xs text-muted-foreground text-right">{Math.round(f.opacity * 100)}%</span>
+
+      {/* Solid color */}
+      {!colorBasedOn && (
+        <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Color</Label>
+          <label className="cursor-pointer flex items-center gap-1.5">
+            <span className="block w-4 h-4 rounded border border-border shrink-0" style={{ backgroundColor: f.color }} />
+            <span className="text-xs text-muted-foreground">{f.color}</span>
+            <input type="color" className="sr-only" value={f.color} onChange={e => update({ color: e.target.value })} />
+          </label>
+        </div>
+      )}
+
+      {modeLoading && <p className="text-[10px] text-muted-foreground">Loading…</p>}
+      {!modeLoading && catFillCtrl    && <CategoricalFilterEditor f={catFillCtrl}    layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} inline />}
+      {!modeLoading && threshFillCtrl && <ThresholdControlEditor  f={threshFillCtrl} layer={layer} onUpdateLayer={onUpdateLayer} inline />}
+    </div>
+  );
+}
+
+// ─── stroke control editor ────────────────────────────────────────────────────
+function StrokeControlEditor({ f, layer, onUpdateLayer, nonGeomCols, connectionId, isLine }: {
+  f: Extract<LayerControl, { type: "stroke" }>;
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
+  isLine?: boolean;
+}) {
+  const [modeLoading, setModeLoading] = React.useState(false);
+
+  function update(patch: Partial<typeof f>) {
+    onUpdateLayer(layer.id, {
+      controls: (layer.controls ?? []).map(c => c.id === f.id ? { ...c, ...patch } : c) as LayerControl[],
+    });
+  }
+
+  const catStrokeCtrl    = (layer.controls ?? []).find(c => c.type === "categorical" && (c as any).target === "stroke") as Extract<LayerControl, { type: "categorical" }> | undefined;
+  const threshStrokeCtrl = (layer.controls ?? []).find(c => c.type === "threshold"   && (c as any).target === "stroke") as Extract<LayerControl, { type: "threshold"  }> | undefined;
+  const colorCtrl    = catStrokeCtrl ?? threshStrokeCtrl;
+  const colorBasedOn = colorCtrl?.column ?? "";
+
+  function removeColorCtrls(controls: LayerControl[]) {
+    return controls.filter(c => !(
+      (c.type === "categorical" && (c as any).target === "stroke") ||
+      (c.type === "threshold"   && (c as any).target === "stroke")
+    ));
+  }
+
+  async function handleColorBy(col: string) {
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: removeColorCtrls(layer.controls ?? []) });
+      return;
+    }
+    setModeLoading(true);
+    const isNumeric = NUMERIC_TYPES_SET.has(nonGeomCols.find(c => c.name === col)?.dataType ?? "");
+    try {
+      if (isNumeric) {
+        let dataMin = 0, dataMax = 100;
+        const res = await fetch("/api/pg/numeric-extent", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+        const data = await res.json();
+        if (data.min != null && data.max != null) { dataMin = data.min; dataMax = data.max; }
+        const step = (dataMax - dataMin) / 3 || 1;
+        const initialRanges: ColorRange[] = [
+          { from: dataMin,            to: dataMin + step,     color: "#3b82f6" },
+          { from: dataMin + step,     to: dataMin + step * 2, color: "#f59e0b" },
+          { from: dataMin + step * 2, to: dataMax,            color: "#ef4444" },
+        ];
+        const midpoint = Math.round((dataMin + dataMax) / 2);
+        const newCtrl: LayerControl = threshStrokeCtrl
+          ? { ...threshStrokeCtrl, column: col, threshold: midpoint, ranges: initialRanges, defaultColor: "#aaaaaa" }
+          : { id: crypto.randomUUID(), type: "threshold", enabled: true, shared: false, column: col,
+              threshold: midpoint, aboveColor: "#22c55e", belowColor: "#ef4444",
+              ranges: initialRanges, defaultColor: "#aaaaaa", target: "stroke" };
+        onUpdateLayer(layer.id, {
+          controls: threshStrokeCtrl
+            ? (layer.controls ?? []).map(c => c.id === threshStrokeCtrl.id ? newCtrl : c) as LayerControl[]
+            : [...removeColorCtrls(layer.controls ?? []), newCtrl],
+        });
+      } else {
+        let rules: FillColorRule[] = [];
+        const res = await fetch("/api/pg/column-values", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+        const data = await res.json();
+        if (data.values?.length > 0) rules = (data.values as string[]).slice(0, MAX_CAT_COLORS).map((v, i) => ({ values: [v], color: CAT_COLORS[i] }));
+        const newCtrl: LayerControl = catStrokeCtrl
+          ? { ...catStrokeCtrl, column: col, rules }
+          : { id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: col, rules, defaultColor: "#aaaaaa", hiddenValues: [], target: "stroke" };
+        onUpdateLayer(layer.id, {
+          controls: catStrokeCtrl
+            ? (layer.controls ?? []).map(c => c.id === catStrokeCtrl.id ? newCtrl : c) as LayerControl[]
+            : [...removeColorCtrls(layer.controls ?? []), newCtrl],
+        });
+      }
+    } catch {}
+    setModeLoading(false);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={colorBasedOn || "__none__"} onValueChange={handleColorBy} disabled={modeLoading}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Solid color" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Solid color</SelectItem>
+            {nonGeomCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      {isPoint && (
+
+      {/* Solid color */}
+      {!colorBasedOn && (
+        <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Color</Label>
+          <label className="cursor-pointer flex items-center gap-1.5">
+            <span className="block w-4 h-4 rounded border border-border shrink-0" style={{ backgroundColor: f.color }} />
+            <span className="text-xs text-muted-foreground">{f.color}</span>
+            <input type="color" className="sr-only" value={f.color} onChange={e => update({ color: e.target.value })} />
+          </label>
+        </div>
+      )}
+
+      {/* Inline color editors */}
+      {modeLoading && <p className="text-[10px] text-muted-foreground">Loading…</p>}
+      {!modeLoading && catStrokeCtrl   && <CategoricalFilterEditor f={catStrokeCtrl}   layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} inline />}
+      {!modeLoading && threshStrokeCtrl && <ThresholdControlEditor  f={threshStrokeCtrl} layer={layer} onUpdateLayer={onUpdateLayer} inline />}
+
+      {/* Width — hidden for line layers (dedicated Line Width card handles it) */}
+      {!isLine && (
         <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Radius</Label>
-          <Slider
-            min={1} max={40} step={1}
-            value={[layer.style.radius]}
-            onValueChange={([v]) => onUpdateLayer(layer.id, { style: { ...layer.style, radius: v } })}
-            disabled={hasRadiusByValue}
-          />
-          <span className={`text-xs text-right ${hasRadiusByValue ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
-            {hasRadiusByValue ? "—" : `${layer.style.radius}px`}
-          </span>
+          <Label className="text-xs text-muted-foreground">Width</Label>
+          <Slider min={0} max={20} step={0.5} value={[f.width]} onValueChange={([v]) => update({ width: v })} />
+          <span className="text-xs text-muted-foreground text-right">{f.width}px</span>
         </div>
       )}
     </div>
   );
 }
 
-// ─── stroke control editor ────────────────────────────────────────────────────
-function StrokeControlEditor({ f, layer, onUpdateLayer }: {
-  f: Extract<LayerControl, { type: "stroke" }>;
+// ─── radius control editor ────────────────────────────────────────────────────
+function RadiusControlEditor({ layer, onUpdateLayer, nonGeomCols, connectionId }: {
   layer: MapLayer;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
 }) {
-  function update(patch: Partial<typeof f>) {
+  const numericCols = nonGeomCols.filter(c => NUMERIC_TYPES_SET.has(c.dataType));
+  const radByValCtrl = (layer.controls ?? []).find(
+    c => c.type === "numeric" && (c as any).target === "radius"
+  ) as Extract<LayerControl, { type: "numeric" }> | undefined;
+
+  async function handleBasedOn(col: string) {
+    const base = (layer.controls ?? []).filter(c => !(c.type === "numeric" && (c as any).target === "radius"));
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: base });
+      return;
+    }
+    let dataMin = 0, dataMax = 0;
+    try {
+      const res = await fetch("/api/pg/numeric-extent", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+      const d = await res.json();
+      if (d.min != null && d.max != null) { dataMin = d.min; dataMax = d.max; }
+    } catch {}
+    const ctrl: LayerControl = radByValCtrl
+      ? { ...radByValCtrl, column: col, dataMin, dataMax, min: dataMin, max: dataMax }
+      : { id: crypto.randomUUID(), type: "numeric", enabled: true, shared: false, column: col, min: dataMin, max: dataMax, dataMin, dataMax, minOutput: 1, maxOutput: 20, target: "radius" };
     onUpdateLayer(layer.id, {
-      controls: (layer.controls ?? []).map(c => c.id === f.id ? { ...c, ...patch } : c) as LayerControl[],
+      controls: radByValCtrl
+        ? (layer.controls ?? []).map(c => c.id === radByValCtrl.id ? ctrl : c) as LayerControl[]
+        : [...base, ctrl],
     });
   }
+
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Color</Label>
-        <label className="cursor-pointer flex items-center gap-1.5">
-          <span className="block w-4 h-4 rounded border border-border shrink-0" style={{ backgroundColor: f.color }} />
-          <span className="text-xs text-muted-foreground font-mono">{f.color}</span>
-          <input type="color" className="sr-only" value={f.color} onChange={e => update({ color: e.target.value })} />
-        </label>
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={radByValCtrl?.column || "__none__"} onValueChange={handleBasedOn}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Static size" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Static size</SelectItem>
+            {numericCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Opacity</Label>
-        <Slider min={0} max={1} step={0.05} value={[f.opacity]} onValueChange={([v]) => update({ opacity: v })} />
-        <span className="text-xs text-muted-foreground text-right">{Math.round(f.opacity * 100)}%</span>
+      {!radByValCtrl && (
+        <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Size</Label>
+          <Slider min={1} max={40} step={1} value={[layer.style.radius]}
+            onValueChange={([v]) => onUpdateLayer(layer.id, { style: { ...layer.style, radius: v } })} />
+          <span className="text-xs text-muted-foreground text-right">{layer.style.radius}px</span>
+        </div>
+      )}
+      {radByValCtrl && <NumericFilterEditor f={radByValCtrl} layer={layer} onUpdateLayer={onUpdateLayer} connectionId={connectionId} />}
+    </div>
+  );
+}
+
+// ─── line width control editor ────────────────────────────────────────────────
+function LineWidthControlEditor({ layer, onUpdateLayer, nonGeomCols, connectionId }: {
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
+}) {
+  const numericCols = nonGeomCols.filter(c => NUMERIC_TYPES_SET.has(c.dataType));
+  const lwCtrl = (layer.controls ?? []).find(
+    c => c.type === "numeric" && (c as any).target === "line-width"
+  ) as Extract<LayerControl, { type: "numeric" }> | undefined;
+
+  async function handleBasedOn(col: string) {
+    const base = (layer.controls ?? []).filter(c => !(c.type === "numeric" && (c as any).target === "line-width"));
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: base });
+      return;
+    }
+    let dataMin = 0, dataMax = 0;
+    try {
+      const res = await fetch("/api/pg/numeric-extent", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+      const d = await res.json();
+      if (d.min != null && d.max != null) { dataMin = d.min; dataMax = d.max; }
+    } catch {}
+    const ctrl: LayerControl = lwCtrl
+      ? { ...lwCtrl, column: col, dataMin, dataMax, min: dataMin, max: dataMax }
+      : { id: crypto.randomUUID(), type: "numeric", enabled: true, shared: false, column: col, min: dataMin, max: dataMax, dataMin, dataMax, minOutput: 1, maxOutput: 8, target: "line-width" };
+    onUpdateLayer(layer.id, {
+      controls: lwCtrl
+        ? (layer.controls ?? []).map(c => c.id === lwCtrl.id ? ctrl : c) as LayerControl[]
+        : [...base, ctrl],
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={lwCtrl?.column || "__none__"} onValueChange={handleBasedOn}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Static width" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Static width</SelectItem>
+            {numericCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Width</Label>
-        <Slider min={0} max={20} step={0.5} value={[f.width]} onValueChange={([v]) => update({ width: v })} />
-        <span className="text-xs text-muted-foreground text-right">{f.width}px</span>
+      {!lwCtrl && (
+        <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Width</Label>
+          <Slider min={0.5} max={20} step={0.5} value={[layer.style.lineWidth]}
+            onValueChange={([v]) => {
+              const strokeCtrl = (layer.controls ?? []).find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+              const patch: Partial<MapLayer> = { style: { ...layer.style, lineWidth: v } };
+              if (strokeCtrl) patch.controls = (layer.controls ?? []).map(c => c.id === strokeCtrl.id ? { ...c, width: v } : c) as LayerControl[];
+              onUpdateLayer(layer.id, patch);
+            }}
+          />
+          <span className="text-xs text-muted-foreground text-right">{layer.style.lineWidth}px</span>
+        </div>
+      )}
+      {lwCtrl && <NumericFilterEditor f={lwCtrl} layer={layer} onUpdateLayer={onUpdateLayer} connectionId={connectionId} />}
+    </div>
+  );
+}
+
+// ─── fill opacity control editor ─────────────────────────────────────────────
+function FillOpacityControlEditor({ f, layer, onUpdateLayer, nonGeomCols, connectionId }: {
+  f: Extract<LayerControl, { type: "fill" }>;
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
+}) {
+  const numericCols = nonGeomCols.filter(c => NUMERIC_TYPES_SET.has(c.dataType));
+  const numOpacityCtrl = (layer.controls ?? []).find(
+    c => c.type === "numeric" && (c as any).target === "opacity"
+  ) as Extract<LayerControl, { type: "numeric" }> | undefined;
+
+  async function handleBasedOn(col: string) {
+    const base = (layer.controls ?? []).filter(c => !(c.type === "numeric" && (c as any).target === "opacity"));
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: base });
+      return;
+    }
+    let dataMin = 0, dataMax = 0;
+    try {
+      const res = await fetch("/api/pg/numeric-extent", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
+      const d = await res.json();
+      if (d.min != null && d.max != null) { dataMin = d.min; dataMax = d.max; }
+    } catch {}
+    const ctrl: LayerControl = numOpacityCtrl
+      ? { ...numOpacityCtrl, column: col, dataMin, dataMax, min: dataMin, max: dataMax }
+      : { id: crypto.randomUUID(), type: "numeric", enabled: true, shared: false, column: col, min: dataMin, max: dataMax, dataMin, dataMax, minOutput: 0.2, maxOutput: 1, target: "opacity" };
+    onUpdateLayer(layer.id, {
+      controls: numOpacityCtrl
+        ? (layer.controls ?? []).map(c => c.id === numOpacityCtrl.id ? ctrl : c) as LayerControl[]
+        : [...base, ctrl],
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Fill Opacity</p>
+      <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={numOpacityCtrl?.column || "__none__"} onValueChange={handleBasedOn}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Static" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Static</SelectItem>
+            {numericCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+      {!numOpacityCtrl && (
+        <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Amount</Label>
+          <Slider min={0} max={1} step={0.05} value={[f.opacity]}
+            onValueChange={([v]) => onUpdateLayer(layer.id, { controls: (layer.controls ?? []).map(c => c.id === f.id ? { ...c, opacity: v } : c) as LayerControl[] })} />
+          <span className="text-xs text-muted-foreground text-right">{Math.round(f.opacity * 100)}%</span>
+        </div>
+      )}
+      {numOpacityCtrl && <NumericFilterEditor f={numOpacityCtrl} layer={layer} onUpdateLayer={onUpdateLayer} connectionId={connectionId} />}
     </div>
   );
 }
@@ -860,7 +1467,14 @@ function LayerFilterEditor({
   connectionId: string;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
 }) {
-  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = React.useState<"style" | "filter">("style");
+  const [fillOpen, setFillOpen] = React.useState(false);
+  const [strokeOpen, setStrokeOpen] = React.useState(false);
+  const [radiusOpen, setRadiusOpen] = React.useState(false);
+  const [lineWidthOpen, setLineWidthOpen] = React.useState(false);
+  const [expanded, setExpanded] = React.useState<Set<string>>(
+    () => new Set((layer.controls ?? []).filter(c => c.type === "fill" || c.type === "stroke").map(c => c.id))
+  );
   function toggleExpanded(id: string) {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -948,7 +1562,7 @@ function LayerFilterEditor({
           const res = await fetch("/api/pg/column-values", { method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }) });
           const data = await res.json();
-          if (data.values?.length > 0) rules = (data.values as string[]).map((v, i) => ({ value: v, color: CAT_COLORS[i % CAT_COLORS.length] }));
+          if (data.values?.length > 0) rules = (data.values as string[]).slice(0, MAX_CAT_COLORS).map((v, i) => ({ values: [v], color: CAT_COLORS[i] }));
         } catch {}
         control = { id, type: "categorical", enabled: true, shared: false, column: col, rules, defaultColor: "#aaaaaa", hiddenValues: [], target: isLine ? "stroke" : "fill" };
       } else if (opt.type === "numeric") {
@@ -998,9 +1612,10 @@ function LayerFilterEditor({
   const isLine = gt.includes("linestring");
   const isPoint = !isLine && !gt.includes("polygon");
 
+  const fillCtrl   = (layer.controls ?? []).find(c => c.type === "fill")   as Extract<LayerControl, { type: "fill" }>   | undefined;
+  const strokeCtrl = (layer.controls ?? []).find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+
   const ALL_OPTIONS: ControlOption[] = [
-    ...(!isLine ? [{ type: "fill" as const,   label: "Fill",                   tagline: "Set fill color & opacity",                    kind: "Style" as const,  kindCls: "bg-purple-500/15 text-purple-600 dark:text-purple-400", icon: <Paintbrush className="h-3 w-3" />, needsColumn: false as const }] : []),
-    { type: "stroke",      label: "Stroke",                 tagline: "Set outline color, opacity & width",           kind: "Style",  kindCls: "bg-blue-500/15 text-blue-600 dark:text-blue-400",       icon: <Sliders    className="h-3 w-3" />, needsColumn: false },
     { type: "categorical", label: "Color by Category",      tagline: "Color & filter features by a column's values", kind: "Hybrid", kindCls: "bg-teal-500/15 text-teal-600 dark:text-teal-400",       icon: <Tag        className="h-3 w-3" />, needsColumn: "any" },
     { type: "threshold" as const, label: "Color by Threshold", tagline: "Two colors split at a numeric threshold",       kind: "Style" as const, kindCls: "bg-orange-500/15 text-orange-600 dark:text-orange-400", icon: <Paintbrush className="h-3 w-3" />, needsColumn: "numeric" as const },
     ...(!isLine ? [{ type: "numeric" as const, target: "opacity" as const,     label: "Opacity by Value",       tagline: "Fade fill opacity based on a column",          kind: "Style" as const,  kindCls: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400", icon: <Paintbrush className="h-3 w-3" />, needsColumn: "numeric" as const }] : []),
@@ -1019,181 +1634,337 @@ function LayerFilterEditor({
     ? nonGeomCols.filter(c => TEMPORAL_TYPES.has(c.dataType))
     : nonGeomCols;
 
-  return (
-    <div className="space-y-2 min-w-0 w-full overflow-hidden">
+  // Categorical/threshold targeting fill or stroke are rendered inline in those sections
+  const otherControls = (layer.controls ?? []).filter(c =>
+    c.type !== "fill" && c.type !== "stroke" &&
+    !(c.type === "categorical") && !(c.type === "threshold")
+  );
+  const styleControls = otherControls.filter(c =>
+    c.type === "numeric" && (c as any).target !== "filter"
+  );
+  const filterControls = otherControls.filter(c =>
+    c.type === "attribute" || c.type === "temporal" ||
+    (c.type === "numeric" && (c as any).target === "filter")
+  );
 
-      {/* Control cards */}
-      {(layer.controls ?? []).map((f) => {
-        const meta = CTRL_META[f.type];
-        return (
-          <div key={f.id} className={`border rounded-lg overflow-hidden transition-opacity ${!f.enabled ? "opacity-60" : ""}`}>
-            {/* Card header */}
-            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/30 cursor-pointer select-none"
-              onClick={() => toggleExpanded(f.id)}>
-              {/* Enable toggle */}
-              <button
-                role="switch"
-                aria-checked={f.enabled}
-                onClick={() => toggleEnabled(f.id)}
-                title={f.enabled ? "On — click to disable" : "Off — click to enable"}
-                className={`shrink-0 relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus-visible:outline-none ${f.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
-              >
-                <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${f.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
-              </button>
+  // Categorical/threshold now live inline in fill/stroke sections — only numeric non-filter in style picker
+  const STYLE_OPTIONS = ALL_OPTIONS.filter(o =>
+    o.type === "numeric" && (o as any).target !== "filter"
+  );
+  const FILTER_OPTIONS = ALL_OPTIONS.filter(o => o.type === "attribute" || o.type === "temporal" || (o.type === "numeric" && (o as any).target === "filter"));
+  const activeOptions = activeTab === "style" ? STYLE_OPTIONS : FILTER_OPTIONS;
 
-              {/* Kind badge + label + column */}
-              {(() => {
-                const effectiveKind = f.type === "numeric" && f.target === "filter" ? "Filter" : meta.kind;
-                const effectiveKindCls = f.type === "numeric" && f.target === "filter"
-                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                  : meta.kindCls;
-                return (
-                  <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${effectiveKindCls}`}>
-                    {effectiveKind}
-                  </span>
-                );
-              })()}
-              <span className="text-[10px] font-mono text-foreground/70 truncate flex-1 min-w-0">
-                {"column" in f ? f.column : meta.label.toLowerCase()}
-                {f.type === "numeric" && (
-                  <span className="text-muted-foreground/50 ml-1">·{" "}
-                    {{ opacity: "opacity", strokeOpacity: "stroke α", radius: "radius", "line-width": "width", filter: "range" }[f.target]}
-                  </span>
-                )}
+  function renderControlCard(f: LayerControl) {
+    const meta = CTRL_META[f.type];
+    return (
+      <div key={f.id} className={`border rounded-lg overflow-hidden transition-opacity ${!f.enabled ? "opacity-60" : ""}`}>
+        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/30 cursor-pointer select-none"
+          onClick={() => toggleExpanded(f.id)}>
+          <button
+            role="switch" aria-checked={f.enabled}
+            onClick={e => { e.stopPropagation(); toggleEnabled(f.id); }}
+            title={f.enabled ? "On — click to disable" : "Off — click to enable"}
+            className={`shrink-0 relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus-visible:outline-none ${f.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+          >
+            <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${f.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+          </button>
+          <span className="text-[10px] text-foreground/70 truncate flex-1 min-w-0">
+            {"column" in f ? f.column : meta.label.toLowerCase()}
+            {f.type === "numeric" && (
+              <span className="text-muted-foreground/50 ml-1">·{" "}
+                {{ opacity: "opacity", strokeOpacity: "stroke α", radius: "radius", "line-width": "width", filter: "range" }[f.target]}
               </span>
+            )}
+          </span>
+          <button
+            onClick={e => { e.stopPropagation(); toggleShare(f.id); }}
+            title={f.shared ? "Public — visible to viewers" : "Private — owner only"}
+            className={`shrink-0 transition-colors ${f.shared ? "text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+          >
+            {f.shared ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+          </button>
+          <button onClick={e => { e.stopPropagation(); removeFilter(f.id); }} className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors">
+            <X className="h-3 w-3" />
+          </button>
+          <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform ${expanded.has(f.id) ? "rotate-180" : ""}`} />
+        </div>
+        {expanded.has(f.id) && (
+          <div className="px-2.5 pb-2.5 pt-2 min-w-0 overflow-hidden">
+            {f.shared && (f.type === "categorical" || f.type === "temporal" || f.type === "numeric" || f.type === "threshold") && (
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wide shrink-0">Label</span>
+                <input
+                  value={f.label ?? ""}
+                  onChange={e => setControlLabel(f.id, e.target.value)}
+                  placeholder={(() => {
+                    if (f.type === "temporal") return "Timeline";
+                    if (f.type === "numeric") return f.target === "radius" ? "Radius by Value" : f.target === "filter" ? `Range · ${f.column}` : f.column;
+                    if (f.type === "threshold") return `${f.column} threshold`;
+                    return `Color by ${f.column}`;
+                  })()}
+                  className="flex-1 text-[10px] bg-muted/30 border rounded px-2 py-0.5 outline-none focus:border-primary min-w-0"
+                />
+              </div>
+            )}
+            {f.type === "categorical" && <CategoricalFilterEditor f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
+            {f.type === "threshold"   && <ThresholdControlEditor  f={f} layer={layer} onUpdateLayer={onUpdateLayer} />}
+            {f.type === "temporal"    && <TemporalFilterEditor    f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
+            {f.type === "numeric"     && <NumericFilterEditor     f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
+            {f.type === "attribute"   && <AttributeFilterEditor   f={f} layer={layer} nonGeomCols={nonGeomCols} drafts={drafts} setDrafts={setDrafts} onUpdateLayer={onUpdateLayer} connectionId={connectionId} />}
+          </div>
+        )}
+      </div>
+    );
+  }
 
-              {/* Share toggle */}
-              <button
-                onClick={e => { e.stopPropagation(); toggleShare(f.id); }}
-                title={f.shared ? "Public — visible to viewers" : "Private — owner only"}
-                className={`shrink-0 transition-colors ${f.shared ? "text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+  function renderAddButton(opts: ControlOption[]) {
+    return !deploying ? (
+      <button
+        onClick={() => setDeploying(true)}
+        className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md border border-dashed text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
+      >
+        <Plus className="h-3 w-3" /> {activeTab === "style" ? "Add style" : "Add filter"}
+      </button>
+    ) : !pickedOption ? (
+      <div className="border rounded-lg overflow-hidden bg-muted/10">
+        <div className="flex items-center justify-between px-2.5 py-1.5 bg-muted/30 border-b">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            {activeTab === "style" ? "Choose a style" : "Choose a filter"}
+          </span>
+          <button onClick={cancelDeploy} className="text-muted-foreground hover:text-foreground p-0.5">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="p-1.5 space-y-0.5">
+          {opts.map(opt => {
+            const key = `${opt.type}-${(opt as any).target ?? ""}`;
+            const alreadyExists = opt.needsColumn === false && (layer.controls ?? []).some(c => c.type === opt.type);
+            return (
+              <button key={key}
+                disabled={alreadyExists || deploying2}
+                onClick={() => {
+                  if (alreadyExists) return;
+                  if (opt.needsColumn === false) {
+                    const id = crypto.randomUUID();
+                    const control: LayerControl = opt.type === "fill"
+                      ? { id, type: "fill", enabled: true, shared: false, color: layer.style.color, opacity: layer.style.opacity }
+                      : { id, type: "stroke", enabled: true, shared: false, color: layer.style.strokeColor ?? "#ffffff", opacity: layer.style.strokeOpacity ?? 1, width: layer.style.lineWidth };
+                    applyControls([...(layer.controls ?? []), control]);
+                    setExpanded(prev => new Set(prev).add(id));
+                    setDeploying(false);
+                  } else {
+                    setPickedOption(opt);
+                    setPickedCol("");
+                  }
+                }}
+                className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md transition-colors text-left ${alreadyExists ? "opacity-35 cursor-not-allowed" : "hover:bg-muted"}`}
               >
-                {f.shared ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                <span className={`shrink-0 p-1.5 rounded ${opt.kindCls}`}>{opt.icon}</span>
+                <span className="text-[11px] font-semibold flex-1 min-w-0 truncate">{opt.label}</span>
+                <span className={`shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${alreadyExists ? "bg-muted text-muted-foreground" : opt.kindCls}`}>
+                  {alreadyExists ? "added" : opt.kind}
+                </span>
               </button>
-              <button onClick={e => { e.stopPropagation(); removeFilter(f.id); }} className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors">
-                <X className="h-3 w-3" />
+            );
+          })}
+        </div>
+      </div>
+    ) : (
+      <div className="border rounded-lg overflow-hidden bg-muted/10">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/30 border-b">
+          <button onClick={() => { setPickedOption(null); setPickedCol(""); }}
+            className="text-muted-foreground hover:text-foreground transition-colors">
+            <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          </button>
+          <span className={`shrink-0 p-1 rounded ${pickedOption.kindCls}`}>{pickedOption.icon}</span>
+          <span className="text-[10px] font-semibold flex-1 truncate">{pickedOption.label}</span>
+          <button onClick={cancelDeploy} className="text-muted-foreground hover:text-foreground p-0.5">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="p-2.5 space-y-2">
+          <p className="text-[10px] text-muted-foreground">
+            {pickedOption.needsColumn === "numeric" ? "Pick a numeric column" : pickedOption.needsColumn === "temporal" ? "Pick a date/time column" : "Pick a column"}
+            {filteredCols.length === 0 && <span className="text-destructive"> — no matching columns found</span>}
+          </p>
+          <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            {filteredCols.map(c => (
+              <button key={c.name}
+                disabled={deploying2}
+                onClick={() => { setPickedCol(c.name); deployWithColumn(pickedOption, c.name); }}
+                className={`flex items-center gap-2 w-full px-2 py-1.5 rounded hover:bg-muted transition-colors text-left ${pickedCol === c.name ? "bg-muted" : ""}`}
+              >
+                <span className="text-[11px] flex-1 truncate">{c.name}</span>
+                <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                {pickedCol === c.name && deploying2 && <span className="text-[9px] text-muted-foreground">…</span>}
               </button>
-              <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform ${expanded.has(f.id) ? "rotate-180" : ""}`} />
-            </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-            {/* Card body — collapsible */}
-            {expanded.has(f.id) && <div className="px-2.5 pb-2.5 pt-2 min-w-0 overflow-hidden">
-              {/* Public label — only for shared interactive controls */}
-              {f.shared && (f.type === "categorical" || f.type === "temporal" || f.type === "numeric" || f.type === "threshold") && (
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className="text-[9px] text-muted-foreground uppercase tracking-wide shrink-0">Label</span>
-                  <input
-                    value={f.label ?? ""}
-                    onChange={e => setControlLabel(f.id, e.target.value)}
-                    placeholder={(() => {
-                      if (f.type === "temporal") return "Timeline";
-                      if (f.type === "numeric") return f.target === "radius" ? "Radius by Value" : f.target === "filter" ? `Range · ${f.column}` : f.column;
-                      if (f.type === "threshold") return `${f.column} threshold`;
-                      return `Color by ${f.column}`;
-                    })()}
-                    className="flex-1 text-[10px] bg-muted/30 border rounded px-2 py-0.5 outline-none focus:border-primary font-mono min-w-0"
-                  />
+  return (
+    <div className="space-y-3 min-w-0 w-full overflow-hidden">
+
+      {/* Style / Filter tabs */}
+      <div className="flex rounded-md bg-muted/40 p-0.5 gap-0.5">
+        {(["style", "filter"] as const).map(tab => (
+          <button key={tab}
+            onClick={() => { setActiveTab(tab); setDeploying(false); setPickedOption(null); setPickedCol(""); }}
+            className={`flex-1 text-[11px] font-medium py-1 rounded-sm transition-colors capitalize ${activeTab === tab ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {tab === "style" ? "Style" : "Filter"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "style" && (<>
+        {/* Fill section — collapsible, includes opacity */}
+        {fillCtrl && (
+          <div className="border border-border/50 rounded-lg overflow-hidden">
+            <div
+              role="button" tabIndex={0}
+              className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors select-none cursor-pointer"
+              onClick={() => setFillOpen(o => !o)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFillOpen(o => !o); } }}
+            >
+              <ChevronDown className={`h-3 w-3 text-muted-foreground/60 transition-transform shrink-0 ${fillOpen ? "" : "-rotate-90"}`} />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">Fill</span>
+              <button
+                role="switch" aria-checked={fillCtrl.enabled}
+                onClick={e => { e.stopPropagation(); toggleEnabled(fillCtrl.id); }}
+                title={fillCtrl.enabled ? "On — click to disable" : "Off — click to enable"}
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${fillCtrl.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+              >
+                <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${fillCtrl.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+              </button>
+            </div>
+            {fillOpen && (
+              <div className={`px-2.5 py-2 space-y-3 ${fillCtrl.enabled ? "" : "opacity-50 pointer-events-none"}`}>
+                <FillControlEditor f={fillCtrl} layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} />
+                <div className="border-t border-border/40 pt-2">
+                  <FillOpacityControlEditor f={fillCtrl} layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Outline/Stroke section — collapsible, includes opacity */}
+        {strokeCtrl && (
+          <div className="border border-border/50 rounded-lg overflow-hidden">
+            <div
+              role="button" tabIndex={0}
+              className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors select-none cursor-pointer"
+              onClick={() => setStrokeOpen(o => !o)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStrokeOpen(o => !o); } }}
+            >
+              <ChevronDown className={`h-3 w-3 text-muted-foreground/60 transition-transform shrink-0 ${strokeOpen ? "" : "-rotate-90"}`} />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">{isLine ? "Stroke" : "Outline"}</span>
+              <button
+                role="switch" aria-checked={strokeCtrl.enabled}
+                onClick={e => { e.stopPropagation(); toggleEnabled(strokeCtrl.id); }}
+                title={strokeCtrl.enabled ? "On — click to disable" : "Off — click to enable"}
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${strokeCtrl.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+              >
+                <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${strokeCtrl.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+              </button>
+            </div>
+            {strokeOpen && (
+              <div className={`px-2.5 py-2 space-y-3 ${strokeCtrl.enabled ? "" : "opacity-50 pointer-events-none"}`}>
+                <StrokeControlEditor f={strokeCtrl} layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} isLine={isLine} />
+                <div className="border-t border-border/40 pt-2 space-y-2">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{isLine ? "Stroke Opacity" : "Outline Opacity"}</p>
+                  <div className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-2">
+                    <Label className="text-xs text-muted-foreground">Amount</Label>
+                    <Slider min={0} max={1} step={0.05} value={[strokeCtrl.opacity]}
+                      onValueChange={([v]) => onUpdateLayer(layer.id, { controls: layer.controls.map(c => c.id === strokeCtrl.id ? { ...c, opacity: v } : c) as LayerControl[] })} />
+                    <span className="text-xs text-muted-foreground text-right">{Math.round(strokeCtrl.opacity * 100)}%</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Line Width section — lines only, collapsible card */}
+        {isLine && (() => {
+          const lwCtrl = (layer.controls ?? []).find(c => c.type === "numeric" && (c as any).target === "line-width") as Extract<LayerControl, { type: "numeric" }> | undefined;
+          return (
+            <div className="border border-border/50 rounded-lg overflow-hidden">
+              <div
+                role="button" tabIndex={0}
+                className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors select-none cursor-pointer"
+                onClick={() => setLineWidthOpen(o => !o)}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLineWidthOpen(o => !o); } }}
+              >
+                <ChevronDown className={`h-3 w-3 text-muted-foreground/60 transition-transform shrink-0 ${lineWidthOpen ? "" : "-rotate-90"}`} />
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">Line Width</span>
+                {lwCtrl && (
+                  <button
+                    role="switch" aria-checked={lwCtrl.enabled}
+                    onClick={e => { e.stopPropagation(); toggleEnabled(lwCtrl.id); }}
+                    title={lwCtrl.enabled ? "On — click to disable" : "Off — click to enable"}
+                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${lwCtrl.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+                  >
+                    <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${lwCtrl.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+                  </button>
+                )}
+              </div>
+              {lineWidthOpen && (
+                <div className="px-2.5 py-2">
+                  <LineWidthControlEditor layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} />
                 </div>
               )}
-              {f.type === "fill"        && <FillControlEditor       f={f} layer={layer} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "stroke"      && <StrokeControlEditor     f={f} layer={layer} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "categorical" && <CategoricalFilterEditor f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "threshold"   && <ThresholdControlEditor  f={f} layer={layer} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "temporal"    && <TemporalFilterEditor    f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "numeric"     && <NumericFilterEditor     f={f} layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />}
-              {f.type === "attribute"   && <AttributeFilterEditor   f={f} layer={layer} nonGeomCols={nonGeomCols} drafts={drafts} setDrafts={setDrafts} onUpdateLayer={onUpdateLayer} connectionId={connectionId} />}
-            </div>}
-          </div>
-        );
-      })}
-
-      {/* Add Control */}
-      {!deploying ? (
-        <button
-          onClick={() => setDeploying(true)}
-          className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md border border-dashed text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
-        >
-          <Plus className="h-3 w-3" /> Add control
-        </button>
-      ) : !pickedOption ? (
-        /* Step 1: pick control type */
-        <div className="border rounded-lg overflow-hidden bg-muted/10">
-          <div className="flex items-center justify-between px-2.5 py-1.5 bg-muted/30 border-b">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Choose a control</span>
-            <button onClick={cancelDeploy} className="text-muted-foreground hover:text-foreground p-0.5">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="p-1.5 space-y-0.5">
-            {ALL_OPTIONS.map(opt => {
-              const key = `${opt.type}-${opt.target ?? ""}`;
-              const alreadyExists = opt.needsColumn === false && (layer.controls ?? []).some(c => c.type === opt.type);
-              return (
-                <button key={key}
-                  disabled={alreadyExists || deploying2}
-                  onClick={() => {
-                    if (alreadyExists) return;
-                    if (opt.needsColumn === false) {
-                      // deploy immediately
-                      const id = crypto.randomUUID();
-                      const control: LayerControl = opt.type === "fill"
-                        ? { id, type: "fill", enabled: true, shared: false, color: layer.style.color, opacity: layer.style.opacity }
-                        : { id, type: "stroke", enabled: true, shared: false, color: layer.style.strokeColor ?? "#ffffff", opacity: layer.style.strokeOpacity ?? 1, width: layer.style.lineWidth };
-                      applyControls([...(layer.controls ?? []), control]);
-                      setExpanded(prev => new Set(prev).add(id));
-                      setDeploying(false);
-                    } else {
-                      setPickedOption(opt);
-                      setPickedCol("");
-                    }
-                  }}
-                  className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md transition-colors text-left ${alreadyExists ? "opacity-35 cursor-not-allowed" : "hover:bg-muted"}`}
-                >
-                  <span className={`shrink-0 p-1.5 rounded ${opt.kindCls}`}>{opt.icon}</span>
-                  <span className="text-[11px] font-semibold flex-1 min-w-0 truncate">{opt.label}</span>
-                  <span className={`shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${alreadyExists ? "bg-muted text-muted-foreground" : opt.kindCls}`}>
-                    {alreadyExists ? "added" : opt.kind}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        /* Step 2: pick column for the chosen control type */
-        <div className="border rounded-lg overflow-hidden bg-muted/10">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/30 border-b">
-            <button onClick={() => { setPickedOption(null); setPickedCol(""); }}
-              className="text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronRight className="h-3.5 w-3.5 rotate-180" />
-            </button>
-            <span className={`shrink-0 p-1 rounded ${pickedOption.kindCls}`}>{pickedOption.icon}</span>
-            <span className="text-[10px] font-semibold flex-1 truncate">{pickedOption.label}</span>
-            <button onClick={cancelDeploy} className="text-muted-foreground hover:text-foreground p-0.5">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="p-2.5 space-y-2">
-            <p className="text-[10px] text-muted-foreground">
-              {pickedOption.needsColumn === "numeric" ? "Pick a numeric column" : pickedOption.needsColumn === "temporal" ? "Pick a date/time column" : "Pick a column"}
-              {filteredCols.length === 0 && <span className="text-destructive"> — no matching columns found</span>}
-            </p>
-            <div className="space-y-0.5 max-h-48 overflow-y-auto">
-              {filteredCols.map(c => (
-                <button key={c.name}
-                  disabled={deploying2}
-                  onClick={() => { setPickedCol(c.name); deployWithColumn(pickedOption, c.name); }}
-                  className={`flex items-center gap-2 w-full px-2 py-1.5 rounded hover:bg-muted transition-colors text-left ${pickedCol === c.name ? "bg-muted" : ""}`}
-                >
-                  <span className="text-[11px] font-mono flex-1 truncate">{c.name}</span>
-                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
-                  {pickedCol === c.name && deploying2 && <span className="text-[9px] text-muted-foreground">…</span>}
-                </button>
-              ))}
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
+
+        {/* Radius section — points only, collapsible card */}
+        {isPoint && (() => {
+          const radByValCtrl = (layer.controls ?? []).find(c => c.type === "numeric" && (c as any).target === "radius") as Extract<LayerControl, { type: "numeric" }> | undefined;
+          return (
+            <div className="border border-border/50 rounded-lg overflow-hidden">
+              <div
+                role="button" tabIndex={0}
+                className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors select-none cursor-pointer"
+                onClick={() => setRadiusOpen(o => !o)}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRadiusOpen(o => !o); } }}
+              >
+                <ChevronDown className={`h-3 w-3 text-muted-foreground/60 transition-transform shrink-0 ${radiusOpen ? "" : "-rotate-90"}`} />
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">Radius</span>
+                {radByValCtrl && (
+                  <button
+                    role="switch" aria-checked={radByValCtrl.enabled}
+                    onClick={e => { e.stopPropagation(); toggleEnabled(radByValCtrl.id); }}
+                    title={radByValCtrl.enabled ? "On — click to disable" : "Off — click to enable"}
+                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${radByValCtrl.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+                  >
+                    <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${radByValCtrl.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+                  </button>
+                )}
+              </div>
+              {radiusOpen && (
+                <div className="px-2.5 py-2">
+                  <RadiusControlEditor layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} />
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+      </>)}
+
+      {activeTab === "filter" && (<>
+        {filterControls.length === 0 && !deploying && (
+          <p className="text-[11px] text-muted-foreground text-center py-2">No filters applied</p>
+        )}
+        {filterControls.map(f => renderControlCard(f))}
+        {renderAddButton(FILTER_OPTIONS)}
+      </>)}
+
     </div>
   );
 }
@@ -1220,11 +1991,11 @@ function AttributeFilterEditor({ f, layer, nonGeomCols, drafts, setDrafts, onUpd
     <div className="space-y-1 mt-1">
       {/* Column */}
       <Select value={f.column} onValueChange={(col) => { apply({ column: col, value: "" }); setDrafts(p => ({ ...p, [f.id]: "" })); }}>
-        <SelectTrigger className="h-6 text-[11px] w-full font-mono overflow-hidden [&>span]:truncate">
+        <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
           <SelectValue placeholder="column" />
         </SelectTrigger>
         <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
-          {nonGeomCols.map(c => <SelectItem key={c.name} value={c.name} className="text-xs font-mono">{c.name}</SelectItem>)}
+          {nonGeomCols.map(c => <SelectItem key={c.name} value={c.name} className="text-xs">{c.name}</SelectItem>)}
         </SelectContent>
       </Select>
       {/* Operator */}
@@ -1268,34 +2039,30 @@ function AttributeFilterEditor({ f, layer, nonGeomCols, drafts, setDrafts, onUpd
   );
 }
 
-export function TableSidebar({
-  connectionId, connectionLoaded, layers,
-  onAddLayer, onRemoveLayer, onUpdateLayer, onReorderLayers,
-  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onConnectionLost,
-  basemap, onBasemapChange,
-}: Props) {
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
-  const [tab, setTab] = React.useState("browser");
+// ─── ConnectionBrowserNode ────────────────────────────────────────────────────
+function ConnectionBrowserNode({
+  connId, connName, isActive, layers, onAddLayer, onZoomToTable, onFlyTo, onOpenSettings, onDelete, onSwitchToLayers,
+}: {
+  connId: string;
+  connName: string;
+  isActive: boolean;
+  layers: MapLayer[];
+  onAddLayer: (table: TableRow, connId: string) => void;
+  onZoomToTable?: (table: TableRow) => void;
+  onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
+  onOpenSettings?: () => void;
+  onDelete?: (connId: string) => void;
+  onSwitchToLayers?: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
   const [tables, setTables] = React.useState<TableRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [postgisRequired, setPostgisRequired] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
-  const [expandedLayer, setExpandedLayer] = React.useState<string | null>(null);
-  const [expandedSection, setExpandedSection] = React.useState<"controls" | null>(null);
-  const [dragId, setDragId] = React.useState<string | null>(null);
-  const [dragOverId, setDragOverId] = React.useState<string | null>(null);
-  type LayerCtx = { x: number; y: number; layerId: string } | null;
-  const [layerCtx, setLayerCtx] = React.useState<LayerCtx>(null);
-  const layerCtxRef = React.useRef<HTMLDivElement>(null);
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [createDefaultSchema, setCreateDefaultSchema] = React.useState<string | undefined>(undefined);
-
-  const [deleteTarget, setDeleteTarget] = React.useState<{ schema: string; table: string } | null>(null);
-  const [renameTarget, setRenameTarget] = React.useState<{ schema: string; table: string } | null>(null);
-  const [attrTableLayer, setAttrTableLayer] = React.useState<MapLayer | null>(null);
-  const [tableInfoTarget, setTableInfoTarget] = React.useState<{ schema: string; table: string } | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
+  const [connected, setConnected] = React.useState<boolean | null>(null);
+
   const [assigningSrid, setAssigningSrid] = React.useState<string | null>(null);
   const [sridInput, setSridInput] = React.useState("4326");
   const [assignLoading, setAssignLoading] = React.useState(false);
@@ -1319,15 +2086,18 @@ export function TableSidebar({
   const [clusterLoading, setClusterLoading] = React.useState(false);
   const [clusterError, setClusterError] = React.useState<string | null>(null);
 
-  const [connectionOpen, setConnectionOpen] = React.useState(false);
-  const [basemapOpen, setBasemapOpen] = React.useState(false);
   type CtxTarget =
     | { type: "connection" }
     | { type: "schema"; schema: string }
-    | { type: "table"; table: TableRow }
-    | { type: "basemap"; key: string };
+    | { type: "table"; table: TableRow };
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; target: CtxTarget } | null>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createDefaultSchema, setCreateDefaultSchema] = React.useState<string | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ schema: string; table: string } | null>(null);
+  const [renameTarget, setRenameTarget] = React.useState<{ schema: string; table: string } | null>(null);
+  const [tableInfoTarget, setTableInfoTarget] = React.useState<{ schema: string; table: string } | null>(null);
 
   React.useEffect(() => {
     if (!contextMenu) return;
@@ -1343,6 +2113,543 @@ export function TableSidebar({
       document.removeEventListener("keydown", onKey);
     };
   }, [!!contextMenu]);
+
+  // Background connectivity check on mount and after refresh
+  React.useEffect(() => {
+    fetch("/api/pg/tables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId: connId }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error || data.postgisRequired) { setConnected(false); return; }
+        setConnected(true);
+        // Cache tables so expanding is instant
+        setTables(data.tables ?? []);
+        const allSchemas = new Set<string>(data.tables.map((t: any) => t.table_schema));
+        setCollapsed(allSchemas);
+      })
+      .catch(() => setConnected(false));
+  }, [connId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setError(null);
+    setPostgisRequired(false);
+    fetch("/api/pg/tables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId: connId }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        if (data.postgisRequired) { setPostgisRequired(true); setTables([]); return; }
+        setConnected(true);
+        setTables(data.tables ?? []);
+        const allSchemas = new Set<string>(data.tables.map((t: any) => t.table_schema));
+        setCollapsed(allSchemas);
+      })
+      .catch((e) => { setError(e.message); setConnected(false); })
+      .finally(() => setLoading(false));
+  }, [open, connId, refreshKey]);
+
+  const spatialTables = React.useMemo(() => tables.filter((t) => t.geom_col), [tables]);
+  const schemas = React.useMemo(() => {
+    const m = new Map<string, TableRow[]>();
+    for (const t of spatialTables) {
+      if (!m.has(t.table_schema)) m.set(t.table_schema, []);
+      m.get(t.table_schema)!.push(t);
+    }
+    return m;
+  }, [spatialTables]);
+  const layerKeys = React.useMemo(() => new Set(layers.map((l) => `${l.table.table_schema}.${l.table.table_name}`)), [layers]);
+
+  function toggleSchema(schema: string) {
+    setCollapsed((prev) => {
+      const n = new Set(prev);
+      if (n.has(schema)) n.delete(schema); else n.add(schema);
+      return n;
+    });
+  }
+
+  async function handleAssignSrid(t: TableRow) {
+    setAssignLoading(true);
+    setAssignError(null);
+    try {
+      const res = await fetch("/api/pg/assign-srid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: connId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col, srid: sridInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setAssigningSrid(null);
+      setRefreshKey((k) => k + 1);
+    } catch (e: any) {
+      setAssignError(e.message);
+    } finally {
+      setAssignLoading(false);
+    }
+  }
+
+  return (
+    <>
+      {/* Root connection row */}
+      <div className="flex items-center group">
+        <button
+          className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-muted/60 text-left select-none flex-1 min-w-0"
+          onClick={() => setOpen((v) => !v)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "connection" } });
+          }}
+        >
+          {open
+            ? <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+            : <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
+          }
+          <Database className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-xs font-semibold flex-1 text-left truncate min-w-0">{connName}</span>
+        </button>
+        <button
+          onClick={() => { setCreateDefaultSchema(undefined); setCreateOpen(true); }}
+          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all shrink-0"
+          title="Create new table"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+        <span suppressHydrationWarning className={`w-2 h-2 rounded-full shrink-0 mx-1.5 ${connected === true ? "bg-green-500" : connected === false ? "bg-destructive/70" : "bg-muted-foreground/30"}`} title={connected === true ? "Connected" : connected === false ? "Connection error" : "Checking…"} />
+      </div>
+
+      {/* Expanded tree */}
+      {open && (
+        <>
+          {loading && <p className="pl-8 py-1.5 text-xs text-muted-foreground">Loading…</p>}
+          {error && (() => { const { title, detail } = friendlyConnError(error); return (
+            <div className="mx-3 my-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-0.5">
+              <p className="text-xs font-medium text-destructive">{title}</p>
+              <p className="text-xs text-muted-foreground">{detail}</p>
+            </div>
+          ); })()}
+          {postgisRequired && (
+            <div className="mx-3 my-2 rounded-md border border-amber-400/40 bg-amber-500/5 px-3 py-2 space-y-1">
+              <p className="text-xs font-medium text-amber-600 dark:text-amber-400">PostGIS not enabled</p>
+              <p className="text-xs text-muted-foreground">Enable the PostGIS extension on this database, then reconnect.</p>
+              <code className="block text-[10px] bg-muted rounded px-1.5 py-1 text-muted-foreground select-all mt-0.5">CREATE EXTENSION postgis;</code>
+            </div>
+          )}
+          {!loading && !error && !postgisRequired && schemas.size === 0 && (
+            <div className="mx-3 mt-4 mb-2 flex flex-col items-center gap-3 text-center">
+              <p className="text-xs text-muted-foreground">No spatial tables found. Import a file or create a table with a geometry column to get started.</p>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCreateOpen(true)}>
+                Import data
+              </Button>
+            </div>
+          )}
+          {!loading && !error && tables.length === 0 && !postgisRequired && spatialTables.length === 0 && schemas.size === 0 && (
+            <></>
+          )}
+          {!loading && !error && tables.length > 0 && spatialTables.length === 0 && (
+            <div className="pl-8 pr-3 py-3 space-y-1">
+              <p className="text-xs text-muted-foreground">{tables.length} table{tables.length !== 1 ? "s" : ""} found, but none have a geometry column.</p>
+              <p className="text-xs text-muted-foreground/60">Import spatial data or add a PostGIS geometry column to get started.</p>
+            </div>
+          )}
+          {[...schemas.entries()].map(([schema, schemaTables]) => {
+            const isCollapsed = collapsed.has(schema);
+            return (
+              <div key={schema}>
+                <div className="flex items-center group">
+                  <button
+                    className="flex items-center gap-1.5 pl-6 py-1 hover:bg-muted/50 text-left select-none flex-1 min-w-0"
+                    onClick={() => toggleSchema(schema)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "schema", schema } });
+                    }}
+                  >
+                    {isCollapsed
+                      ? <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
+                      : <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+                    }
+                    <Folder className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                    <span className="text-xs font-medium truncate flex-1" title={schema}>{schema}</span>
+                  </button>
+                  <button
+                    onClick={() => { setCreateDefaultSchema(schema); setCreateOpen(true); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all shrink-0"
+                    title={`Create table in ${schema}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] text-muted-foreground shrink-0 pr-3">{schemaTables.length}</span>
+                </div>
+
+                {!isCollapsed && schemaTables.map((t) => {
+                  const key = `${t.table_schema}.${t.table_name}`;
+                  const alreadyAdded = layerKeys.has(key);
+                  const sridUnknown = !t.srid || t.srid === 0;
+                  const isAssigning = assigningSrid === key;
+                  const isFixingPk = fixingPk === key;
+                  const isCreatingIdx = creatingIdx === key;
+                  const isCastingGeom = castingGeom === key;
+                  const isClusteringTable = clusteringTable === key;
+                  const isGenericGeom = t.geom_type === "GEOMETRY" || t.geom_type === "GEOGRAPHY";
+                  return (
+                    <div key={key} className={`border-b ${alreadyAdded ? "bg-primary/5" : ""}`}>
+                      <div
+                        className="group flex items-center gap-1.5 pl-11 pr-2 py-1.5 cursor-default select-none hover:bg-muted/40 min-w-0"
+                        onDoubleClick={() => { if (!alreadyAdded) { onAddLayer(t, connId); onSwitchToLayers?.(); } }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "table", table: t } });
+                        }}
+                      >
+                        <Table2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="text-xs truncate flex-1 min-w-0" title={t.table_name}>{t.table_name}</span>
+                        {alreadyAdded && <Check className="h-3 w-3 text-primary shrink-0" />}
+                        <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          {!alreadyAdded && (
+                            <button
+                              title="Add to map"
+                              onClick={e => { e.stopPropagation(); onAddLayer(t, connId); onSwitchToLayers?.(); }}
+                              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          )}
+                          <button
+                            title="Manage table"
+                            onClick={e => { e.stopPropagation(); setTableInfoTarget({ schema: t.table_schema, table: t.table_name }); }}
+                            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Settings2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {(sridUnknown || t.has_pk === false || t.has_spatial_index === false || isGenericGeom || (t.has_spatial_index && !t.is_clustered && (t.row_count ?? 0) > 10000)) && (
+                        <div className="flex flex-row gap-1.5 items-center pl-11 pb-1">
+                          {sridUnknown && (
+                            <button
+                              className="flex items-center gap-0.5 text-[10px] text-amber-500 hover:text-amber-600"
+                              onClick={() => { setAssigningSrid(isAssigning ? null : key); setSridInput("4326"); setAssignError(null); }}
+                              title="SRID unknown — tiles won't render. Click to assign."
+                            >
+                              <TriangleAlert className="h-2.5 w-2.5" />
+                              SRID
+                            </button>
+                          )}
+                          {t.has_pk === false && (
+                            <button
+                              className="text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 border border-amber-400 dark:border-amber-600 rounded px-1 leading-4 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                              title="No primary key — click to fix"
+                              onClick={() => { setFixingPk(isFixingPk ? null : key); setPkError(null); }}
+                            >
+                              no pk
+                            </button>
+                          )}
+                          {t.has_spatial_index === false && (
+                            <button
+                              className="text-[9px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 border border-blue-400 dark:border-blue-600 rounded px-1 leading-4 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                              title="No spatial index — click to fix"
+                              onClick={() => { setCreatingIdx(isCreatingIdx ? null : key); setIdxError(null); }}
+                            >
+                              no index
+                            </button>
+                          )}
+                          {isGenericGeom && (
+                            <button
+                              className="text-[9px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400 border border-violet-400 dark:border-violet-600 rounded px-1 leading-4 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                              title="Geometry type unspecified — click to cast"
+                              onClick={() => { setCastingGeom(isCastingGeom ? null : key); setCastSrid(String(t.srid ?? 4326)); setCastError(null); }}
+                            >
+                              type unknown
+                            </button>
+                          )}
+                          {t.has_spatial_index && !t.is_clustered && (t.row_count ?? 0) > 10000 && (
+                            <button
+                              className="text-[9px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 border border-teal-400 dark:border-teal-600 rounded px-1 leading-4 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+                              title="Cluster rows by spatial index for faster tile serving"
+                              onClick={() => { setClusteringTable(isClusteringTable ? null : key); setClusterError(null); }}
+                            >
+                              cluster
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {isAssigning && (
+                        <div className="px-3 pb-2 space-y-1.5 bg-amber-50/50 dark:bg-amber-950/20 border-t">
+                          <p className="text-[10px] text-muted-foreground pt-1.5">
+                            Assigns an SRID label without reprojecting coordinates. Use this when the data is already in the target CRS.
+                          </p>
+                          <div className="flex gap-1.5 items-center">
+                            <Input value={sridInput} onChange={(e) => setSridInput(e.target.value)} className="h-7 text-xs w-24" placeholder="4326" />
+                            <Button size="sm" className="h-7 text-xs" onClick={() => handleAssignSrid(t)} disabled={assignLoading}>
+                              {assignLoading ? "Saving…" : "Assign SRID"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAssigningSrid(null)}>Cancel</Button>
+                          </div>
+                          {assignError && <p className="text-[10px] text-destructive break-words">{assignError}</p>}
+                        </div>
+                      )}
+
+                      {isFixingPk && (
+                        <div className="px-3 pb-2 space-y-1.5 bg-amber-50/50 dark:bg-amber-950/20 border-t">
+                          <p className="text-[10px] text-muted-foreground pt-1.5">
+                            Adds an <span className="">id SERIAL PRIMARY KEY</span> column. Existing rows are assigned sequential IDs automatically.
+                          </p>
+                          <div className="flex gap-1.5 items-center">
+                            <Button size="sm" className="h-7 text-xs" disabled={pkLoading} onClick={async () => {
+                              setPkLoading(true); setPkError(null);
+                              try {
+                                const res = await fetch("/api/pg/add-primary-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId: connId, schema: t.table_schema, table: t.table_name }) });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error);
+                                setFixingPk(null); setRefreshKey((k) => k + 1);
+                              } catch (e: any) { setPkError(e.message); } finally { setPkLoading(false); }
+                            }}>
+                              {pkLoading ? "Adding…" : "Add primary key"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFixingPk(null)}>Cancel</Button>
+                          </div>
+                          {pkError && <p className="text-[10px] text-destructive break-words">{pkError}</p>}
+                        </div>
+                      )}
+
+                      {isCreatingIdx && (
+                        <div className="px-3 pb-2 space-y-1.5 bg-blue-50/50 dark:bg-blue-950/20 border-t">
+                          <p className="text-[10px] text-muted-foreground pt-1.5">
+                            Creates a <span className="">GIST</span> index on <span className="font-mono">{t.geom_col}</span> and runs <span className="font-mono">ANALYZE</span>.
+                          </p>
+                          <div className="flex gap-1.5 items-center">
+                            <Button size="sm" className="h-7 text-xs" disabled={idxLoading} onClick={async () => {
+                              setIdxLoading(true); setIdxError(null);
+                              try {
+                                const res = await fetch("/api/pg/create-spatial-index", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId: connId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col }) });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error);
+                                setCreatingIdx(null); setRefreshKey((k) => k + 1);
+                              } catch (e: any) { setIdxError(e.message); } finally { setIdxLoading(false); }
+                            }}>
+                              {idxLoading ? "Creating…" : "Create spatial index"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCreatingIdx(null)}>Cancel</Button>
+                          </div>
+                          {idxError && <p className="text-[10px] text-destructive break-words">{idxError}</p>}
+                        </div>
+                      )}
+
+                      {isCastingGeom && (
+                        <div className="px-3 pb-2 space-y-1.5 bg-violet-50/50 dark:bg-violet-950/20 border-t">
+                          <p className="text-[10px] text-muted-foreground pt-1.5">
+                            Casts the geometry column to a specific type. All existing rows must already be of that geometry type.
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Select value={castType} onValueChange={setCastType}>
+                              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {["Point","MultiPoint","LineString","MultiLineString","Polygon","MultiPolygon","GeometryCollection"].map((gt) => (
+                                  <SelectItem key={gt} value={gt} className="text-xs">{gt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input value={castSrid} onChange={(e) => setCastSrid(e.target.value)} className="h-7 text-xs" placeholder="SRID e.g. 4326" />
+                          </div>
+                          <div className="flex gap-1.5 items-center">
+                            <Button size="sm" className="h-7 text-xs" disabled={castLoading} onClick={async () => {
+                              setCastLoading(true); setCastError(null);
+                              try {
+                                const res = await fetch("/api/pg/cast-geometry-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId: connId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col, newType: castType, srid: castSrid }) });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error);
+                                setCastingGeom(null); setRefreshKey((k) => k + 1);
+                              } catch (e: any) { setCastError(e.message); } finally { setCastLoading(false); }
+                            }}>
+                              {castLoading ? "Casting…" : "Cast type"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCastingGeom(null)}>Cancel</Button>
+                          </div>
+                          {castError && <p className="text-[10px] text-destructive break-words">{castError}</p>}
+                        </div>
+                      )}
+
+                      {isClusteringTable && (
+                        <div className="px-3 pb-2 space-y-1.5 bg-teal-50/50 dark:bg-teal-950/20 border-t">
+                          <p className="text-[10px] text-muted-foreground pt-1.5">
+                            Physically reorders rows to match the spatial index, improving tile query performance on large tables. Runs <span className="">CLUSTER</span> then <span className="font-mono">ANALYZE</span>.
+                          </p>
+                          <div className="flex gap-1.5 items-center">
+                            <Button size="sm" className="h-7 text-xs" disabled={clusterLoading} onClick={async () => {
+                              setClusterLoading(true); setClusterError(null);
+                              try {
+                                const res = await fetch("/api/pg/cluster-table", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId: connId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col }) });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error);
+                                setClusteringTable(null); setRefreshKey((k) => k + 1);
+                              } catch (e: any) { setClusterError(e.message); } finally { setClusterLoading(false); }
+                            }}>
+                              {clusterLoading ? "Clustering…" : "Cluster table"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setClusteringTable(null)}>Cancel</Button>
+                          </div>
+                          {clusterError && <p className="text-[10px] text-destructive break-words">{clusterError}</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-background border rounded-md shadow-lg py-1 min-w-44 text-xs"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenu.target.type === "connection" && (
+            <>
+              <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setCreateOpen(true); setContextMenu(null); }}>
+                Create table
+              </button>
+              <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRefreshKey((k) => k + 1); setContextMenu(null); }}>
+                Refresh
+              </button>
+              <div className="border-t my-1" />
+              <button className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive" onClick={() => { onDelete?.(connId); setContextMenu(null); }}>
+                Remove connection
+              </button>
+            </>
+          )}
+          {contextMenu.target.type === "schema" && (() => {
+            const { schema } = contextMenu.target as { type: "schema"; schema: string };
+            return (
+              <>
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setCreateDefaultSchema(schema); setCreateOpen(true); setContextMenu(null); }}>
+                  New table
+                </button>
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRefreshKey((k) => k + 1); setContextMenu(null); }}>
+                  Refresh
+                </button>
+              </>
+            );
+          })()}
+          {contextMenu.target.type === "table" && (() => {
+            const t = (contextMenu.target as { type: "table"; table: TableRow }).table;
+            const alreadyAdded = layerKeys.has(`${t.table_schema}.${t.table_name}`);
+            return (
+              <>
+                <button
+                  className={`w-full text-left px-3 py-1.5 hover:bg-muted ${alreadyAdded ? "text-muted-foreground" : ""}`}
+                  onClick={() => { if (!alreadyAdded) { onAddLayer(t, connId); onSwitchToLayers?.(); } setContextMenu(null); }}
+                >
+                  {alreadyAdded ? "Already on map" : "Add to map"}
+                </button>
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setTableInfoTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
+                  Table info / columns
+                </button>
+                {onZoomToTable && (
+                  <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { onZoomToTable(t); setContextMenu(null); }}>
+                    Zoom to extent
+                  </button>
+                )}
+                <div className="border-t my-1" />
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRenameTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
+                  Rename / Move
+                </button>
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive" onClick={() => { setDeleteTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
+                  Delete table
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Import tasks panel — only for the active connection */}
+      {isActive && <ImportTasksPanel onRefresh={() => setRefreshKey((k) => k + 1)} />}
+
+      {/* Per-node dialogs */}
+      <CreateTableDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        connectionId={connId}
+        onCreated={() => setRefreshKey((k) => k + 1)}
+        defaultSchema={createDefaultSchema}
+      />
+      {renameTarget && (
+        <RenameTableDialog
+          open={!!renameTarget}
+          onOpenChange={(v) => { if (!v) setRenameTarget(null); }}
+          connectionId={connId}
+          schema={renameTarget.schema}
+          table={renameTarget.table}
+          onRenamed={() => { setRenameTarget(null); setRefreshKey((k) => k + 1); }}
+        />
+      )}
+      {tableInfoTarget && (
+        <TableInfoDialog
+          open={!!tableInfoTarget}
+          onOpenChange={(v) => { if (!v) setTableInfoTarget(null); }}
+          connectionId={connId}
+          schema={tableInfoTarget.schema}
+          table={tableInfoTarget.table}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteTableDialog
+          open={!!deleteTarget}
+          onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+          connectionId={connId}
+          schema={deleteTarget.schema}
+          table={deleteTarget.table}
+          onDeleted={() => { setDeleteTarget(null); setRefreshKey((k) => k + 1); }}
+        />
+      )}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function TableSidebar({
+  connectionId, connectionLoaded, connectionsKey, layers,
+  onAddLayer, onRemoveLayer, onUpdateLayer, onReorderLayers,
+  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onConnectionLost,
+}: Props) {
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [tab, setTab] = React.useState("browser");
+  const [allConnections, setAllConnections] = React.useState<{ id: string; name: string; host: string }[]>([]);
+  const [connectionsLoaded, setConnectionsLoaded] = React.useState(false);
+  const [expandedLayer, setExpandedLayer] = React.useState<string | null>(null);
+  const [expandedSection, setExpandedSection] = React.useState<"controls" | null>(null);
+  const [dragId, setDragId] = React.useState<string | null>(null);
+  const [dragOverId, setDragOverId] = React.useState<string | null>(null);
+  type LayerCtx = { x: number; y: number; layerId: string } | null;
+  const [layerCtx, setLayerCtx] = React.useState<LayerCtx>(null);
+  const layerCtxRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    fetch("/api/connections")
+      .then((r) => r.json())
+      .then((data) => {
+        setAllConnections(Array.isArray(data) ? data : (data.connections ?? []));
+        setConnectionsLoaded(true);
+      })
+      .catch(() => setConnectionsLoaded(true));
+  }, [connectionsKey]);
 
   React.useEffect(() => {
     if (!layerCtx) return;
@@ -1383,94 +2690,6 @@ export function TableSidebar({
     }
   }
 
-  async function handleAssignSrid(t: TableRow) {
-    setAssignLoading(true);
-    setAssignError(null);
-    try {
-      const res = await fetch("/api/pg/assign-srid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connectionId,
-          schema: t.table_schema,
-          table: t.table_name,
-          geomCol: t.geom_col,
-          srid: sridInput,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setAssigningSrid(null);
-      setRefreshKey((k) => k + 1);
-    } catch (e: any) {
-      setAssignError(e.message);
-    } finally {
-      setAssignLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    if (!connectionId) {
-      setTables([]);
-      setError(null);
-      setPostgisRequired(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setPostgisRequired(false);
-    fetch("/api/pg/tables", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionId }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        if (data.postgisRequired) { setPostgisRequired(true); setTables([]); return; }
-        setTables(data.tables ?? []);
-        const allSchemas = new Set<string>(data.tables.map((t: any) => t.table_schema));
-        setCollapsed(allSchemas);
-      })
-      .catch((e) => {
-        setError(e.message);
-        if (/connection not found/i.test(e.message)) {
-          onConnectionLost?.();
-          onOpenSettings?.();
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [connectionId, refreshKey]);
-
-  // Only show spatial tables — non-spatial tables can't be added to the map
-  const spatialTables = React.useMemo(() => tables.filter((t) => t.geom_col), [tables]);
-
-  const schemas = React.useMemo(() => {
-    const map = new Map<string, TableRow[]>();
-    for (const t of spatialTables) {
-      if (!map.has(t.table_schema)) map.set(t.table_schema, []);
-      map.get(t.table_schema)!.push(t);
-    }
-    return map;
-  }, [spatialTables]);
-
-  const layerKeys = new Set(layers.map((l) => `${l.table.table_schema}.${l.table.table_name}`));
-
-  function toggleSchema(schema: string) {
-    setCollapsed((prev) => {
-      if (!prev.has(schema)) {
-        // Collapsing this schema
-        const next = new Set(prev);
-        next.add(schema);
-        return next;
-      } else {
-        // Expanding this schema — collapse all others (accordion)
-        const allOthers = new Set([...schemas.keys()].filter((s) => s !== schema));
-        return allOthers;
-      }
-    });
-  }
-
   return (
     <aside className={`${sidebarCollapsed ? "w-8" : "w-84"} transition-[width] duration-200 shrink-0 border-r flex flex-col overflow-hidden bg-muted/30`}>
       {/* Tab bar */}
@@ -1506,337 +2725,48 @@ export function TableSidebar({
       {/* BROWSER TAB */}
       {!sidebarCollapsed && tab === "browser" && (
         <ScrollArea className="flex-1 min-h-0">
-          {/* PostgreSQL root node — always visible */}
-          <button
-            className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-muted/60 text-left select-none"
-            onClick={() => connectionId && setConnectionOpen((v) => !v)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "connection" } });
-            }}
-          >
-            {connectionOpen
-              ? <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
-              : <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
-            }
-            <img src="/favicon.ico" className="w-4 h-4 shrink-0" alt="" />
-            <span className="text-xs font-semibold flex-1 text-left">PostgreSQL</span>
-            <span suppressHydrationWarning className={`w-2 h-2 rounded-full shrink-0 ${connectionId ? "bg-green-500" : "bg-red-400"}`} title={connectionId ? "Connected" : "Not connected"} />
-          </button>
-
-          {connectionLoaded && !connectionId && (
+          {connectionsLoaded && allConnections.length === 0 && (
             <div className="mx-3 mt-6 mb-2 flex flex-col items-center gap-3 text-center">
-              <p className="text-xs text-muted-foreground">Connect a PostGIS database to browse tables and build maps.</p>
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenSettings?.()}>
-                Connect database
+              <p className="text-xs text-muted-foreground">No saved connections. Add a PostGIS database to get started.</p>
+              <Button size="sm" className="h-7 text-xs" onClick={() => onOpenSettings?.()}>
+                Add connection
               </Button>
             </div>
           )}
-          {loading && <p className="pl-8 py-1.5 text-xs text-muted-foreground">Loading…</p>}
-          {error && (() => { const { title, detail } = friendlyConnError(error); return (
-            <div className="mx-3 my-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-0.5">
-              <p className="text-xs font-medium text-destructive">{title}</p>
-              <p className="text-xs text-muted-foreground">{detail}</p>
-            </div>
-          ); })()}
-          {postgisRequired && (
-            <div className="mx-3 my-2 rounded-md border border-amber-400/40 bg-amber-500/5 px-3 py-2 space-y-1">
-              <p className="text-xs font-medium text-amber-600 dark:text-amber-400">PostGIS not enabled</p>
-              <p className="text-xs text-muted-foreground">Enable the PostGIS extension on this database, then reconnect.</p>
-              <code className="block text-[10px] bg-muted rounded px-1.5 py-1 text-muted-foreground select-all mt-0.5">CREATE EXTENSION postgis;</code>
+          {allConnections.map((c) => (
+            <ConnectionBrowserNode
+              key={c.id}
+              connId={c.id}
+              connName={c.name}
+              isActive={c.id === connectionId}
+              layers={layers}
+              onAddLayer={onAddLayer}
+              onZoomToTable={onZoomToTable}
+              onFlyTo={onFlyTo}
+              onOpenSettings={onOpenSettings}
+              onDelete={async (id) => {
+                await fetch(`/api/connections/${id}`, { method: "DELETE" });
+                setAllConnections((prev) => prev.filter((x) => x.id !== id));
+                if (id === connectionId) onConnectionLost?.();
+              }}
+              onSwitchToLayers={() => setTab("layers")}
+            />
+          ))}
+          {connectionsLoaded && allConnections.length > 0 && (
+            <div className="px-3 py-2 border-t mt-1">
+              <Button size="sm" variant="ghost" className="h-7 text-xs w-full justify-start gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => onOpenSettings?.()}>
+                <Plus className="h-3 w-3" /> Add connection
+              </Button>
             </div>
           )}
-
-          {connectionId && !loading && !error && (
-            <>
-              {connectionOpen && schemas.size === 0 && !postgisRequired && (
-                <div className="mx-3 mt-6 mb-2 flex flex-col items-center gap-3 text-center">
-                  <p className="text-xs text-muted-foreground">No spatial tables found. Import a file or create a table with a geometry column to get started.</p>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCreateOpen(true)}>
-                    Import data
-                  </Button>
-                </div>
-              )}
-
-              {connectionOpen && [...schemas.entries()].map(([schema, schemaTables]) => {
-                const isCollapsed = collapsed.has(schema);
-                return (
-                  <div key={schema}>
-                    {/* Schema node */}
-                    <button
-                      className="w-full flex items-center gap-1.5 pl-6 pr-3 py-1 hover:bg-muted/50 text-left select-none"
-                      onClick={() => toggleSchema(schema)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "schema", schema } });
-                      }}
-                    >
-                      {isCollapsed
-                        ? <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
-                        : <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
-                      }
-                      <Folder className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                      <span className="text-xs font-medium truncate flex-1" title={schema}>{schema}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{schemaTables.length}</span>
-                    </button>
-
-                    {!isCollapsed && schemaTables.map((t) => {
-                      const key = `${t.table_schema}.${t.table_name}`;
-                      const alreadyAdded = layerKeys.has(key);
-                      const sridUnknown = !t.srid || t.srid === 0;
-                      const isAssigning = assigningSrid === key;
-                      const isFixingPk = fixingPk === key;
-                      const isCreatingIdx = creatingIdx === key;
-                      const isCastingGeom = castingGeom === key;
-                      const isClusteringTable = clusteringTable === key;
-                      const isGenericGeom = t.geom_type === "GEOMETRY" || t.geom_type === "GEOGRAPHY";
-                      return (
-                        <div key={key} className={`border-b ${alreadyAdded ? "bg-primary/5" : ""}`}>
-                          <div
-                            className="flex items-center gap-1.5 pl-11 pr-3 py-1.5 cursor-default select-none hover:bg-muted/40 min-w-0"
-                            onDoubleClick={() => { if (!alreadyAdded) { onAddLayer(t); setTab("layers"); } }}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "table", table: t } });
-                            }}
-                          >
-                            <Table2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-                            <span className="text-xs truncate max-w-48" title={t.table_name}>{t.table_name}</span>
-                            {alreadyAdded && <Check className="h-3 w-3 text-primary shrink-0" />}
-                          </div>
-
-                          {/* Warning badges */}
-                          {(sridUnknown || t.has_pk === false || t.has_spatial_index === false || isGenericGeom || (t.has_spatial_index && !t.is_clustered && (t.row_count ?? 0) > 10000)) && (
-                            <div className="flex flex-row gap-1.5 items-center pl-11 pb-1">
-                              {sridUnknown && (
-                                <button
-                                  className="flex items-center gap-0.5 text-[10px] text-amber-500 hover:text-amber-600"
-                                  onClick={() => { setAssigningSrid(isAssigning ? null : key); setSridInput("4326"); setAssignError(null); }}
-                                  title="SRID unknown — tiles won't render. Click to assign."
-                                >
-                                  <TriangleAlert className="h-2.5 w-2.5" />
-                                  SRID
-                                </button>
-                              )}
-                              {t.has_pk === false && (
-                                <button
-                                  className="text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 border border-amber-400 dark:border-amber-600 rounded px-1 leading-4 hover:bg-amber-50 dark:hover:bg-amber-950/40"
-                                  title="No primary key — click to fix"
-                                  onClick={() => { setFixingPk(isFixingPk ? null : key); setPkError(null); }}
-                                >
-                                  no pk
-                                </button>
-                              )}
-                              {t.has_spatial_index === false && (
-                                <button
-                                  className="text-[9px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 border border-blue-400 dark:border-blue-600 rounded px-1 leading-4 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                                  title="No spatial index — click to fix"
-                                  onClick={() => { setCreatingIdx(isCreatingIdx ? null : key); setIdxError(null); }}
-                                >
-                                  no index
-                                </button>
-                              )}
-                              {isGenericGeom && (
-                                <button
-                                  className="text-[9px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400 border border-violet-400 dark:border-violet-600 rounded px-1 leading-4 hover:bg-violet-50 dark:hover:bg-violet-950/40"
-                                  title="Geometry type unspecified — click to cast"
-                                  onClick={() => { setCastingGeom(isCastingGeom ? null : key); setCastSrid(String(t.srid ?? 4326)); setCastError(null); }}
-                                >
-                                  type unknown
-                                </button>
-                              )}
-                              {t.has_spatial_index && !t.is_clustered && (t.row_count ?? 0) > 10000 && (
-                                <button
-                                  className="text-[9px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 border border-teal-400 dark:border-teal-600 rounded px-1 leading-4 hover:bg-teal-50 dark:hover:bg-teal-950/40"
-                                  title="Cluster rows by spatial index for faster tile serving"
-                                  onClick={() => { setClusteringTable(isClusteringTable ? null : key); setClusterError(null); }}
-                                >
-                                  cluster
-                                </button>
-                              )}
-                            </div>
-                          )}
-
-                          {isAssigning && (
-                            <div className="px-3 pb-2 space-y-1.5 bg-amber-50/50 dark:bg-amber-950/20 border-t">
-                              <p className="text-[10px] text-muted-foreground pt-1.5">
-                                Assigns an SRID label without reprojecting coordinates.
-                                Use this when the data is already in the target CRS.
-                              </p>
-                              <div className="flex gap-1.5 items-center">
-                                <Input value={sridInput} onChange={(e) => setSridInput(e.target.value)} className="h-7 text-xs font-mono w-24" placeholder="4326" />
-                                <Button size="sm" className="h-7 text-xs" onClick={() => handleAssignSrid(t)} disabled={assignLoading}>
-                                  {assignLoading ? "Saving…" : "Assign SRID"}
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAssigningSrid(null)}>Cancel</Button>
-                              </div>
-                              {assignError && <p className="text-[10px] text-destructive break-words">{assignError}</p>}
-                            </div>
-                          )}
-
-                          {isFixingPk && (
-                            <div className="px-3 pb-2 space-y-1.5 bg-amber-50/50 dark:bg-amber-950/20 border-t">
-                              <p className="text-[10px] text-muted-foreground pt-1.5">
-                                Adds an <span className="font-mono">id SERIAL PRIMARY KEY</span> column. Existing rows are assigned sequential IDs automatically.
-                              </p>
-                              <div className="flex gap-1.5 items-center">
-                                <Button size="sm" className="h-7 text-xs" disabled={pkLoading} onClick={async () => {
-                                  setPkLoading(true); setPkError(null);
-                                  try {
-                                    const res = await fetch("/api/pg/add-primary-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId, schema: t.table_schema, table: t.table_name }) });
-                                    const data = await res.json();
-                                    if (!res.ok) throw new Error(data.error);
-                                    setFixingPk(null); setRefreshKey((k) => k + 1);
-                                  } catch (e: any) { setPkError(e.message); } finally { setPkLoading(false); }
-                                }}>
-                                  {pkLoading ? "Adding…" : "Add primary key"}
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFixingPk(null)}>Cancel</Button>
-                              </div>
-                              {pkError && <p className="text-[10px] text-destructive break-words">{pkError}</p>}
-                            </div>
-                          )}
-
-                          {isCreatingIdx && (
-                            <div className="px-3 pb-2 space-y-1.5 bg-blue-50/50 dark:bg-blue-950/20 border-t">
-                              <p className="text-[10px] text-muted-foreground pt-1.5">
-                                Creates a <span className="font-mono">GIST</span> index on <span className="font-mono">{t.geom_col}</span> and runs <span className="font-mono">ANALYZE</span>.
-                              </p>
-                              <div className="flex gap-1.5 items-center">
-                                <Button size="sm" className="h-7 text-xs" disabled={idxLoading} onClick={async () => {
-                                  setIdxLoading(true); setIdxError(null);
-                                  try {
-                                    const res = await fetch("/api/pg/create-spatial-index", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col }) });
-                                    const data = await res.json();
-                                    if (!res.ok) throw new Error(data.error);
-                                    setCreatingIdx(null); setRefreshKey((k) => k + 1);
-                                  } catch (e: any) { setIdxError(e.message); } finally { setIdxLoading(false); }
-                                }}>
-                                  {idxLoading ? "Creating…" : "Create spatial index"}
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCreatingIdx(null)}>Cancel</Button>
-                              </div>
-                              {idxError && <p className="text-[10px] text-destructive break-words">{idxError}</p>}
-                            </div>
-                          )}
-
-                          {isCastingGeom && (
-                            <div className="px-3 pb-2 space-y-1.5 bg-violet-50/50 dark:bg-violet-950/20 border-t">
-                              <p className="text-[10px] text-muted-foreground pt-1.5">
-                                Casts the geometry column to a specific type. All existing rows must already be of that geometry type.
-                              </p>
-                              <div className="grid grid-cols-2 gap-1.5">
-                                <Select value={castType} onValueChange={setCastType}>
-                                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {["Point","MultiPoint","LineString","MultiLineString","Polygon","MultiPolygon","GeometryCollection"].map((gt) => (
-                                      <SelectItem key={gt} value={gt} className="text-xs">{gt}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Input value={castSrid} onChange={(e) => setCastSrid(e.target.value)} className="h-7 text-xs font-mono" placeholder="SRID e.g. 4326" />
-                              </div>
-                              <div className="flex gap-1.5 items-center">
-                                <Button size="sm" className="h-7 text-xs" disabled={castLoading} onClick={async () => {
-                                  setCastLoading(true); setCastError(null);
-                                  try {
-                                    const res = await fetch("/api/pg/cast-geometry-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col, newType: castType, srid: castSrid }) });
-                                    const data = await res.json();
-                                    if (!res.ok) throw new Error(data.error);
-                                    setCastingGeom(null); setRefreshKey((k) => k + 1);
-                                  } catch (e: any) { setCastError(e.message); } finally { setCastLoading(false); }
-                                }}>
-                                  {castLoading ? "Casting…" : "Cast type"}
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCastingGeom(null)}>Cancel</Button>
-                              </div>
-                              {castError && <p className="text-[10px] text-destructive break-words">{castError}</p>}
-                            </div>
-                          )}
-
-                          {isClusteringTable && (
-                            <div className="px-3 pb-2 space-y-1.5 bg-teal-50/50 dark:bg-teal-950/20 border-t">
-                              <p className="text-[10px] text-muted-foreground pt-1.5">
-                                Physically reorders rows to match the spatial index, improving tile query performance on large tables. Runs <span className="font-mono">CLUSTER</span> then <span className="font-mono">ANALYZE</span>.
-                              </p>
-                              <div className="flex gap-1.5 items-center">
-                                <Button size="sm" className="h-7 text-xs" disabled={clusterLoading} onClick={async () => {
-                                  setClusterLoading(true); setClusterError(null);
-                                  try {
-                                    const res = await fetch("/api/pg/cluster-table", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connectionId, schema: t.table_schema, table: t.table_name, geomCol: t.geom_col }) });
-                                    const data = await res.json();
-                                    if (!res.ok) throw new Error(data.error);
-                                    setClusteringTable(null); setRefreshKey((k) => k + 1);
-                                  } catch (e: any) { setClusterError(e.message); } finally { setClusterLoading(false); }
-                                }}>
-                                  {clusterLoading ? "Clustering…" : "Cluster table"}
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setClusteringTable(null)}>Cancel</Button>
-                              </div>
-                              {clusterError && <p className="text-[10px] text-destructive break-words">{clusterError}</p>}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              {/* Empty states — only shown when the connection section is expanded */}
-              {connectionOpen && !loading && tables.length === 0 && (
-                <div className="pl-8 pr-3 py-3 space-y-1">
-                  <p className="text-xs text-muted-foreground">No tables found in this database.</p>
-                  <p className="text-xs text-muted-foreground/60">Create a table or import data to get started.</p>
-                </div>
-              )}
-              {connectionOpen && !loading && tables.length > 0 && spatialTables.length === 0 && (
-                <div className="pl-8 pr-3 py-3 space-y-1">
-                  <p className="text-xs text-muted-foreground">{tables.length} table{tables.length !== 1 ? "s" : ""} found, but none have a geometry column.</p>
-                  <p className="text-xs text-muted-foreground/60">Import spatial data or add a PostGIS geometry column to get started.</p>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Basemaps root node */}
-          <div className="border-t">
-            <button
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-muted/60 text-left select-none"
-              onClick={() => setBasemapOpen((v) => !v)}
-            >
-              {basemapOpen
-                ? <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
-                : <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
-              }
-              <Globe className="w-4 h-4 shrink-0 text-sky-400" />
-              <span className="text-xs font-semibold flex-1 text-left">Basemaps</span>
-            </button>
-
-            {basemapOpen && (
-              <>
-                {BASEMAP_OPTIONS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    className={`w-full flex items-center gap-2 pl-8 pr-3 py-1 text-left hover:bg-muted/40 text-xs text-muted-foreground`}
-                    onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, target: { type: "basemap", key } }); }}
-                    onDoubleClick={() => { onBasemapChange(key); setTab("layers"); }}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 border ${basemap === key ? "bg-primary border-primary" : "border-muted-foreground"}`} />
-                    <span className="flex-1">{label}</span>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
         </ScrollArea>
       )}
 
       {/* LAYERS TAB */}
       {!sidebarCollapsed && tab === "layers" && (
-        <ScrollArea className="flex-1 min-h-0">
-          {layers.length === 0 && !basemap && (
+        <ScrollArea className="flex-1 min-h-0 w-full [&>[data-radix-scroll-area-viewport]>div]:!block">
+          <div className="w-full min-w-0">
+          {layers.length === 0 && (
             <div className="p-4 space-y-1">
               <p className="text-xs text-muted-foreground">No layers added yet.</p>
               <p className="text-xs text-muted-foreground/60">Double-click a table in the Browser tab, or right-click for more options.</p>
@@ -1846,12 +2776,30 @@ export function TableSidebar({
           {[...layers].reverse().map((layer) => {
             const gt = (layer.geomTypeOverride ?? layer.table.geom_type ?? "").toLowerCase();
             const isLine = gt.includes("linestring");
+            const isExpanded = expandedLayer === layer.id && expandedSection === "controls";
             const isDragOver = dragOverId === layer.id && dragId !== layer.id;
+
+            const layerColor = (() => {
+              if (isLine) {
+                const sc = (layer.controls ?? []).find(c => c.type === "stroke" && c.enabled) as Extract<LayerControl, { type: "stroke" }> | undefined;
+                return sc ? sc.color : layer.style.strokeColor;
+              }
+              const fc = (layer.controls ?? []).find(c => c.type === "fill" && c.enabled) as Extract<LayerControl, { type: "fill" }> | undefined;
+              const cc = (layer.controls ?? []).find(c => c.type === "categorical" && c.enabled && (c as any).target === "fill") as Extract<LayerControl, { type: "categorical" }> | undefined;
+              return fc ? fc.color : cc ? cc.defaultColor : layer.style.color;
+            })();
+
+            const geomLabel = (() => {
+              if (gt.includes("point")) return "Point";
+              if (gt.includes("line")) return "Line";
+              if (gt.includes("polygon")) return "Polygon";
+              return layer.table.geom_type ?? "Geometry";
+            })();
 
             return (
               <div
                 key={layer.id}
-                className={`border-b select-none ${isDragOver ? "border-t-2 border-t-primary" : ""} ${dragId === layer.id ? "opacity-40" : ""} ${activeLayerId === layer.id ? "bg-primary/5 border-l-2 border-l-primary" : ""}`}
+                className={`mx-2 my-1.5 rounded-lg border overflow-hidden select-none transition-colors ${isDragOver ? "border-primary" : "border-border"} ${dragId === layer.id ? "opacity-40" : ""}`}
                 draggable
                 onDragStart={() => setDragId(layer.id)}
                 onDragEnd={() => { setDragId(null); setDragOverId(null); }}
@@ -1860,36 +2808,35 @@ export function TableSidebar({
                 onDrop={(e) => { e.preventDefault(); handleLayerDrop(layer.id); }}
                 onContextMenu={(e) => { e.preventDefault(); setLayerCtx({ x: e.clientX, y: e.clientY, layerId: layer.id }); }}
               >
-                {/* Layer row */}
-                <div className={`flex items-center gap-1 px-1.5 py-1.5 min-w-0 ${!layer.visible ? "opacity-40" : ""}`}>
-                  <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 cursor-grab" />
-                  <span
-                    className="block shrink-0 w-3.5 h-3.5 rounded-sm border border-border"
-                    style={{ backgroundColor: (() => {
-                      if (isLine) {
-                        const sc = (layer.controls ?? []).find(c => c.type === "stroke" && c.enabled) as Extract<LayerControl, { type: "stroke" }> | undefined;
-                        return sc ? sc.color : layer.style.strokeColor;
-                      }
-                      const fc = (layer.controls ?? []).find(c => c.type === "fill" && c.enabled) as Extract<LayerControl, { type: "fill" }> | undefined;
-                      const cc = (layer.controls ?? []).find(c => c.type === "categorical" && c.enabled && (c as any).target === "fill") as Extract<LayerControl, { type: "categorical" }> | undefined;
-                      return fc ? fc.color : cc ? cc.defaultColor : layer.style.color;
-                    })() }}
+                {/* Card header */}
+                <div
+                  className={`group/card flex items-center gap-2 px-2 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors ${!layer.visible ? "opacity-50" : ""}`}
+                  onClick={() => toggleSection(layer.id)}
+                >
+                  <GripVertical
+                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 cursor-grab"
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  <span
-                    className="flex-1 flex items-center gap-1 min-w-0 overflow-hidden"
+                  <GeomTypeIcon gt={gt} color={layerColor} />
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="text-xs font-medium truncate leading-tight" title={layer.table.table_name}>{layer.table.table_name}</p>
+                  </div>
+                  {onZoomToLayer && (
+                    <button
+                      className="shrink-0 text-muted-foreground hover:text-foreground p-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); onZoomToLayer(layer); }}
+                      title="Zoom to extent"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    className="shrink-0 text-muted-foreground hover:text-destructive p-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity"
+                    onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }}
+                    title="Remove layer"
                   >
-                    <span className="flex flex-col min-w-0">
-                      <span className="text-xs truncate font-medium leading-tight max-w-50" title={layer.table.table_name}>{layer.table.table_name}</span>
-                      {layer.table.table_schema !== "public" && (
-                        <span className="text-[10px] text-muted-foreground truncate leading-tight" title={layer.table.table_schema}>{layer.table.table_schema}</span>
-                      )}
-                    </span>
-                    {(layer.controls ?? []).length > 0 && (
-                      <Badge variant="secondary" className="shrink-0 h-4 px-1 text-[10px]">
-                        {(layer.controls ?? []).length}
-                      </Badge>
-                    )}
-                  </span>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     className="shrink-0 text-muted-foreground hover:text-foreground p-0.5"
                     onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, { visible: !layer.visible }); }}
@@ -1897,206 +2844,21 @@ export function TableSidebar({
                   >
                     {layer.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                   </button>
+                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
 
-                {/* Controls panel */}
-                {expandedLayer === layer.id && expandedSection === "controls" && (
-                  <div className="px-3 pb-3 pt-2 bg-muted/20 border-t space-y-3 min-w-0 overflow-hidden">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Controls</span>
-                      <button onClick={() => { setExpandedLayer(null); setExpandedSection(null); }} className="text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
-                    </div>
-                    {(layer.table.geom_type === "GEOMETRY" || layer.table.geom_type === "GEOGRAPHY") && (
-                      <div className="grid grid-cols-[3.5rem_1fr] items-center gap-2">
-                        <Label className="text-xs text-muted-foreground">Type</Label>
-                        <Select value={layer.geomTypeOverride ?? ""} onValueChange={(v) => onUpdateLayer(layer.id, { geomTypeOverride: v || null })}>
-                          <SelectTrigger className={`h-7 text-xs ${!layer.geomTypeOverride ? "border-amber-400 dark:border-amber-600" : ""}`}>
-                            <SelectValue placeholder="Select type…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {["Point","MultiPoint","LineString","MultiLineString","Polygon","MultiPolygon"].map((t) => (
-                              <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <LayerFilterEditor layer={layer} connectionId={connectionId} onUpdateLayer={onUpdateLayer} />
+                {/* Expanded panel */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-2.5 bg-muted/10 border-t space-y-3 min-w-0 overflow-hidden">
+                    <LayerFilterEditor layer={layer} connectionId={layer.connectionId ?? connectionId} onUpdateLayer={onUpdateLayer} />
                   </div>
                 )}
               </div>
             );
           })}
-
-          {/* Active basemap entry */}
-          {basemap && (() => {
-            const bDef = BASEMAP_OPTIONS.find((b) => b.key === basemap);
-            return (
-              <div className="flex items-center gap-1 px-1.5 py-1.5 border-t">
-                <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/20" />
-                <Globe className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-                <span className="flex-1 flex flex-col min-w-0">
-                  <span className="text-xs font-medium truncate leading-tight">{bDef?.label ?? basemap}</span>
-                  <span className="text-[10px] text-muted-foreground leading-tight">Basemap</span>
-                </span>
-                <button
-                  className="shrink-0 text-muted-foreground hover:text-foreground p-0.5"
-                  title="Remove basemap"
-                  onClick={() => onBasemapChange("")}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            );
-          })()}
+          </div>
         </ScrollArea>
       )}
-      {!sidebarCollapsed && <ImportTasksPanel onRefresh={() => setRefreshKey((k) => k + 1)} />}
-      <CreateTableDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        connectionId={connectionId}
-        onCreated={() => setRefreshKey((k) => k + 1)}
-        defaultSchema={createDefaultSchema}
-      />
-      {renameTarget && (
-        <RenameTableDialog
-          open={!!renameTarget}
-          onOpenChange={(v) => { if (!v) setRenameTarget(null); }}
-          connectionId={connectionId}
-          schema={renameTarget.schema}
-          table={renameTarget.table}
-          onRenamed={() => {
-            setRenameTarget(null);
-            setRefreshKey((k) => k + 1);
-          }}
-        />
-      )}
-      {tableInfoTarget && (
-        <TableInfoDialog
-          open={!!tableInfoTarget}
-          onOpenChange={(v) => { if (!v) setTableInfoTarget(null); }}
-          connectionId={connectionId}
-          schema={tableInfoTarget.schema}
-          table={tableInfoTarget.table}
-          onChanged={() => setRefreshKey((k) => k + 1)}
-        />
-      )}
-      {attrTableLayer && (
-        <AttributeTableDialog
-          open={!!attrTableLayer}
-          onOpenChange={(v) => { if (!v) setAttrTableLayer(null); }}
-          connectionId={connectionId}
-          schema={attrTableLayer.table.table_schema}
-          table={attrTableLayer.table.table_name}
-          geomCol={attrTableLayer.table.geom_col}
-          onFlyTo={onFlyTo}
-          filters={attrTableLayer.controls}
-          onFiltersChange={(attrControls) => {
-            const nonAttr = (attrTableLayer.controls ?? []).filter(c => c.type !== "attribute");
-            onUpdateLayer(attrTableLayer.id, { controls: [...nonAttr, ...attrControls] });
-          }}
-          onDataChanged={() => {
-            const current = layers.find((l) => l.id === attrTableLayer.id);
-            if (current) onUpdateLayer(current.id, { dataVersion: (current.dataVersion ?? 0) + 1 });
-          }}
-        />
-      )}
-      {deleteTarget && (
-        <DeleteTableDialog
-          open={!!deleteTarget}
-          onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
-          connectionId={connectionId}
-          schema={deleteTarget.schema}
-          table={deleteTarget.table}
-          onDeleted={() => {
-            setDeleteTarget(null);
-            setRefreshKey((k) => k + 1);
-          }}
-        />
-      )}
-
-      {/* Context menu */}
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 bg-background border rounded-md shadow-lg py-1 min-w-44 text-xs"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenu.target.type === "connection" && (
-            <>
-              <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { onOpenSettings?.(); setContextMenu(null); }}>
-                {connectionId ? "Change connection" : "Connect…"}
-              </button>
-              {connectionId && (
-                <>
-                  <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setCreateOpen(true); setContextMenu(null); }}>
-                    Create table
-                  </button>
-                  <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRefreshKey((k) => k + 1); setContextMenu(null); }}>
-                    Refresh
-                  </button>
-                </>
-              )}
-            </>
-          )}
-          {contextMenu.target.type === "schema" && (() => {
-            const { schema } = contextMenu.target as { type: "schema"; schema: string };
-            return (
-              <>
-                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setCreateDefaultSchema(schema); setCreateOpen(true); setContextMenu(null); }}>
-                  New table
-                </button>
-                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRefreshKey((k) => k + 1); setContextMenu(null); }}>
-                  Refresh
-                </button>
-              </>
-            );
-          })()}
-          {contextMenu.target.type === "table" && (() => {
-            const t = contextMenu.target.table;
-            const alreadyAdded = layerKeys.has(`${t.table_schema}.${t.table_name}`);
-            return (
-              <>
-                <button
-                  className={`w-full text-left px-3 py-1.5 hover:bg-muted ${alreadyAdded ? "text-muted-foreground" : ""}`}
-                  onClick={() => { if (!alreadyAdded) { onAddLayer(t); setTab("layers"); } setContextMenu(null); }}
-                >
-                  {alreadyAdded ? "Already on map" : "Add to map"}
-                </button>
-                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setTableInfoTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
-                  Table info / columns
-                </button>
-                {onZoomToTable && (
-                  <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { onZoomToTable(t); setContextMenu(null); }}>
-                    Zoom to extent
-                  </button>
-                )}
-                <div className="border-t my-1" />
-                <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { setRenameTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
-                  Rename / Move
-                </button>
-                <button className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive" onClick={() => { setDeleteTarget({ schema: t.table_schema, table: t.table_name }); setContextMenu(null); }}>
-                  Delete table
-                </button>
-              </>
-            );
-          })()}
-          {contextMenu.target.type === "basemap" && (() => {
-            const { key } = contextMenu.target as { type: "basemap"; key: string };
-            const alreadyActive = basemap === key;
-            return (
-              <button
-                className={`w-full text-left px-3 py-1.5 hover:bg-muted ${alreadyActive ? "text-muted-foreground" : ""}`}
-                onClick={() => { if (!alreadyActive) { onBasemapChange(key); setTab("layers"); } setContextMenu(null); }}
-              >
-                {alreadyActive ? "Already on map" : "Add to map"}
-              </button>
-            );
-          })()}
-        </div>
-      )}
-
       {/* Layer context menu */}
       {layerCtx && (() => {
         const layer = layers.find((l) => l.id === layerCtx.layerId);
@@ -2113,10 +2875,6 @@ export function TableSidebar({
               Controls
               {(layer.controls ?? []).length > 0 && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{(layer.controls ?? []).length}</Badge>}
               {isControlsOpen && (layer.controls ?? []).length === 0 && <span className="text-[10px] text-primary">▸</span>}
-            </button>
-            <button className="w-full text-left px-3 py-1.5 hover:bg-muted"
-              onClick={() => { setAttrTableLayer(layer); setLayerCtx(null); }}>
-              Open attribute table
             </button>
             <div className="border-t my-1" />
             {onZoomToLayer && (

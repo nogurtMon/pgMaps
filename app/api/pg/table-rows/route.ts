@@ -24,6 +24,8 @@ export async function POST(req: NextRequest) {
     sortCol, sortDir = "asc",
     search,
     attrFilters = [],
+    bbox,
+    goToCtid,
   } = await req.json();
   let dsn: string;
   try { dsn = await resolveDsnFromRequest({ connectionId, shareId, dsn: legacyDsn }); }
@@ -36,14 +38,33 @@ export async function POST(req: NextRequest) {
   try {
     client = await pool.connect();
     const colRes = await client.query(
-      `SELECT column_name, udt_name, data_type
-       FROM information_schema.columns
-       WHERE table_schema = $1 AND table_name = $2
-       ORDER BY ordinal_position`,
+      `SELECT
+         a.attname AS column_name,
+         t.typname AS udt_name,
+         CASE t.typname
+           WHEN 'varchar'     THEN 'character varying'
+           WHEN 'bpchar'      THEN 'character'
+           WHEN 'int2'        THEN 'smallint'
+           WHEN 'int4'        THEN 'integer'
+           WHEN 'int8'        THEN 'bigint'
+           WHEN 'float4'      THEN 'real'
+           WHEN 'float8'      THEN 'double precision'
+           WHEN 'bool'        THEN 'boolean'
+           WHEN 'timestamptz' THEN 'timestamp with time zone'
+           WHEN 'timestamp'   THEN 'timestamp without time zone'
+           ELSE t.typname
+         END AS data_type
+       FROM pg_catalog.pg_attribute a
+       JOIN pg_catalog.pg_class     c ON c.oid = a.attrelid
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_catalog.pg_type      t ON t.oid = a.atttypid
+       WHERE n.nspname = $1 AND c.relname = $2
+         AND a.attnum > 0 AND NOT a.attisdropped
+       ORDER BY a.attnum`,
       [schema, table]
     );
     if (colRes.rows.length === 0)
-      return NextResponse.json({ error: "Table not found or has no columns" }, { status: 404 });
+      return NextResponse.json({ error: `Table not found: ${schema}.${table}` }, { status: 404 });
 
     const columns: { name: string; dataType: string; isGeom: boolean }[] =
       colRes.rows.map((r) => ({
@@ -135,7 +156,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (bbox && Array.isArray(bbox) && bbox.length === 4) {
+      const geomCol = columns.find(c => c.isGeom);
+      if (geomCol) {
+        const [xmin, ymin, xmax, ymax] = bbox.map(Number);
+        params.push(xmin, ymin, xmax, ymax);
+        const n = params.length;
+        whereClauses.push(
+          `ST_Intersects(${ident(geomCol.name)}, ST_MakeEnvelope($${n-3}, $${n-2}, $${n-1}, $${n}, 4326))`
+        );
+      }
+    }
+
     const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+    // goToCtid mode: find which page contains this row and return that page
+    if (goToCtid) {
+      const [posRes, countRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) AS pos FROM ${ident(schema, table)} WHERE ctid < $1::tid`, [goToCtid]),
+        client.query(`SELECT COUNT(*) AS total FROM ${ident(schema, table)}`),
+      ]);
+      const pos = parseInt(posRes.rows[0].pos);
+      const total = parseInt(countRes.rows[0].total);
+      const goToPage = Math.floor(pos / pageSize);
+      const rowsRes = await client.query(
+        `SELECT ${selectParts.join(", ")} FROM ${ident(schema, table)} ORDER BY ctid LIMIT $1 OFFSET $2`,
+        [pageSize, goToPage * pageSize]
+      );
+      return NextResponse.json({ columns, rows: rowsRes.rows, total, goToPage });
+    }
 
     const countRes = await client.query(
       `SELECT COUNT(*) FROM ${ident(schema, table)} ${whereClause}`,

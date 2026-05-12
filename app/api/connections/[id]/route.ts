@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConnection, renameConnection, deleteConnection } from "@/lib/connections-store";
 import { getPool } from "@/lib/pool";
+import { evictDsnCache } from "@/lib/resolve-dsn";
 
-// GET /api/connections/[id]/test — test the connection
+// GET /api/connections/[id] — test the connection
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,6 +47,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteConnection(id);
+    evictDsnCache(id);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

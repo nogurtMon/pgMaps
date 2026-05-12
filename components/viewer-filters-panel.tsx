@@ -36,11 +36,14 @@ function geomKind(layer: MapLayer): "point" | "line" | "polygon" {
 
 function GeomSwatch({ layer }: { layer: MapLayer }) {
   const kind = geomKind(layer);
-  const fill = layer.style?.color ?? "#3b82f6";
-  const stroke = layer.style?.strokeColor ?? "#ffffff";
+  const fillCtrl = (layer.controls ?? []).find(c => c.type === "fill") as Extract<LayerControl, { type: "fill" }> | undefined;
+  const strokeCtrl = (layer.controls ?? []).find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+  const fill = fillCtrl?.color ?? layer.style?.color ?? "#3b82f6";
+  const stroke = strokeCtrl?.color ?? layer.style?.strokeColor ?? "#ffffff";
+  const lineColor = strokeCtrl?.color ?? layer.style?.color ?? "#3b82f6";
   if (kind === "line") return (
     <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
-      <line x1="1" y1="7" x2="13" y2="7" stroke={fill} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="1" y1="7" x2="13" y2="7" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
   if (kind === "polygon") return (
@@ -168,7 +171,7 @@ function TemporalViewer({ f, layerId, onUpdateLayer }: {
   return (
     <div className="space-y-2">
       {f.column && (
-        <p className="text-[10px] text-muted-foreground">Column: <span className="font-mono text-foreground">{f.column}</span></p>
+        <p className="text-[10px] text-muted-foreground">Column: <span className="text-foreground">{f.column}</span></p>
       )}
       <div className="flex gap-1">
         {(["all", "range", "snapshot"] as TemporalMode[]).map(m => (
@@ -228,9 +231,11 @@ function CategoricalViewer({ f, layerId, onUpdateLayer }: {
   layerId: string;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
 }) {
-  function toggleValue(val: string) {
+  function toggleStep(rule: typeof f.rules[number]) {
     const hidden = new Set(f.hiddenValues);
-    if (hidden.has(val)) hidden.delete(val); else hidden.add(val);
+    const allHidden = rule.values.length > 0 && rule.values.every(v => hidden.has(v));
+    if (allHidden) rule.values.forEach(v => hidden.delete(v));
+    else rule.values.forEach(v => hidden.add(v));
     onUpdateLayer(layerId, { __controlPatch: { id: f.id, patch: { hiddenValues: [...hidden] } } } as any);
   }
 
@@ -243,13 +248,16 @@ function CategoricalViewer({ f, layerId, onUpdateLayer }: {
         </button>
       )}
       <div>
-        {f.rules.map(rule => {
-          const hidden = f.hiddenValues.includes(rule.value);
+        {f.rules.map((rule, i) => {
+          const allHidden = rule.values.length > 0 && rule.values.every(v => f.hiddenValues.includes(v));
+          const label = rule.values.length === 0
+            ? <em className="text-muted-foreground">No values</em>
+            : <>{rule.values.slice(0, 2).join(", ")}{rule.values.length > 2 && <span className="text-muted-foreground"> +{rule.values.length - 2}</span>}</>;
           return (
-            <button key={rule.value} onClick={() => toggleValue(rule.value)}
-              className={`flex items-center gap-1 w-full text-left transition-opacity py-px ${hidden ? "opacity-40" : ""}`}>
+            <button key={i} onClick={() => toggleStep(rule)}
+              className={`flex items-center gap-1 w-full text-left transition-opacity py-px ${allHidden ? "opacity-40" : ""}`}>
               <span className="w-2 h-2 rounded-sm shrink-0 border" style={{ backgroundColor: rule.color }} />
-              <span className="text-[10px] truncate leading-tight">{rule.value}</span>
+              <span className="text-[10px] truncate leading-tight">{label}</span>
             </button>
           );
         })}
@@ -357,7 +365,7 @@ function RadiusViewer({ f, layer, onUpdateLayer }: {
         <div className="relative flex-1">
           <button
             onClick={() => setOpen(o => !o)}
-            className="w-full flex items-center justify-between gap-1 border rounded px-2 py-1 text-[11px] font-mono bg-background hover:bg-muted transition-colors"
+            className="w-full flex items-center justify-between gap-1 border rounded px-2 py-1 text-[11px] bg-background hover:bg-muted transition-colors"
           >
             <span className="truncate">{f.column || "—"}</span>
             <span className="text-muted-foreground text-[9px]">▾</span>
@@ -366,7 +374,7 @@ function RadiusViewer({ f, layer, onUpdateLayer }: {
             <div className="absolute left-0 top-full mt-1 z-50 bg-background border rounded shadow-md min-w-full max-h-40 overflow-y-auto">
               {cols.map(c => (
                 <button key={c} onClick={() => fetchExtent(c)}
-                  className={`w-full text-left px-2 py-1 text-[11px] font-mono hover:bg-muted transition-colors ${c === f.column ? "text-primary font-semibold" : ""}`}>
+                  className={`w-full text-left px-2 py-1 text-[11px] hover:bg-muted transition-colors ${c === f.column ? "text-primary font-semibold" : ""}`}>
                   {c}
                 </button>
               ))}
@@ -428,7 +436,7 @@ function ThresholdViewer({ f, layerId, onUpdateLayer }: {
         <InlineEditNumber
           value={f.threshold}
           onChange={v => update({ threshold: v })}
-          className="text-[10px] font-mono flex-1"
+          className="text-[10px] flex-1"
         />
       </div>
       <div className="flex items-center gap-2 text-[10px]">

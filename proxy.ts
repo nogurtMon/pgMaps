@@ -10,7 +10,7 @@ async function hashPassword(password: string): Promise<string> {
     .join("");
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const password = process.env.APP_PASSWORD;
   if (!password) return NextResponse.next();
 

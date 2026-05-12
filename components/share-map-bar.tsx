@@ -40,11 +40,14 @@ function geomKind(layer: MapLayer): "point" | "line" | "polygon" {
 
 function GeomSwatch({ layer }: { layer: MapLayer }) {
   const kind = geomKind(layer);
-  const fill = layer.style?.color ?? "#3b82f6";
-  const stroke = layer.style?.strokeColor ?? "#ffffff";
+  const fillCtrl = (layer.controls ?? []).find(c => c.type === "fill") as Extract<LayerControl, { type: "fill" }> | undefined;
+  const strokeCtrl = (layer.controls ?? []).find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+  const fill = fillCtrl?.color ?? layer.style?.color ?? "#3b82f6";
+  const stroke = strokeCtrl?.color ?? layer.style?.strokeColor ?? "#ffffff";
+  const lineColor = strokeCtrl?.color ?? layer.style?.color ?? "#3b82f6";
   if (kind === "line") return (
     <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
-      <line x1="1" y1="7" x2="13" y2="7" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="1" y1="7" x2="13" y2="7" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
   if (kind === "polygon") return (
@@ -160,7 +163,7 @@ function TemporalViewer({ f, layerId, onUpdate }: {
   return (
     <div className="space-y-2">
       {f.column && (
-        <p className="text-[10px] text-muted-foreground">Column: <span className="font-mono text-foreground">{f.column}</span></p>
+        <p className="text-[10px] text-muted-foreground">Column: <span className="text-foreground">{f.column}</span></p>
       )}
       <div className="flex gap-1">
         {(["all", "range", "snapshot"] as TemporalMode[]).map(m => (
@@ -216,9 +219,11 @@ function CategoricalViewer({ f, layerId, onUpdate }: {
   f: Extract<LayerControl, { type: "categorical" }>; layerId: string;
   onUpdate: (id: string, patch: any) => void;
 }) {
-  function toggleValue(val: string) {
+  function toggleStep(rule: typeof f.rules[number]) {
     const hidden = new Set(f.hiddenValues);
-    if (hidden.has(val)) hidden.delete(val); else hidden.add(val);
+    const allHidden = rule.values.length > 0 && rule.values.every(v => hidden.has(v));
+    if (allHidden) rule.values.forEach(v => hidden.delete(v));
+    else rule.values.forEach(v => hidden.add(v));
     onUpdate(f.id, { hiddenValues: [...hidden] });
   }
   return (
@@ -230,13 +235,16 @@ function CategoricalViewer({ f, layerId, onUpdate }: {
         </button>
       )}
       <div>
-        {f.rules.map(rule => {
-          const hidden = f.hiddenValues.includes(rule.value);
+        {f.rules.map((rule, i) => {
+          const allHidden = rule.values.length > 0 && rule.values.every(v => f.hiddenValues.includes(v));
+          const label = rule.values.length === 0
+            ? <em className="text-muted-foreground">No values</em>
+            : <>{rule.values.slice(0, 2).join(", ")}{rule.values.length > 2 && <span className="text-muted-foreground"> +{rule.values.length - 2}</span>}</>;
           return (
-            <button key={rule.value} onClick={() => toggleValue(rule.value)}
-              className={`flex items-center gap-1 w-full text-left transition-opacity py-px ${hidden ? "opacity-40" : ""}`}>
+            <button key={i} onClick={() => toggleStep(rule)}
+              className={`flex items-center gap-1 w-full text-left transition-opacity py-px ${allHidden ? "opacity-40" : ""}`}>
               <span className="w-2 h-2 rounded-sm shrink-0 border" style={{ backgroundColor: rule.color }} />
-              <span className="text-[10px] truncate leading-tight">{rule.value}</span>
+              <span className="text-[10px] truncate leading-tight">{label}</span>
             </button>
           );
         })}
@@ -287,7 +295,7 @@ function ThresholdViewer({ f, onUpdate }: {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-muted-foreground shrink-0">Threshold</span>
-        <InlineEditNumber value={f.threshold} onChange={v => onUpdate(f.id, { threshold: v })} className="text-[10px] font-mono flex-1" />
+        <InlineEditNumber value={f.threshold} onChange={v => onUpdate(f.id, { threshold: v })} className="text-[10px] flex-1" />
       </div>
       <div className="flex items-center gap-2 text-[10px]">
         <span className="w-3 h-3 rounded-sm shrink-0 border" style={{ backgroundColor: f.aboveColor }} />
@@ -321,12 +329,16 @@ function LegendPanel({ layers }: { layers: MapLayer[] }) {
             </div>
             {catControl && catControl.rules.length > 0 && (
               <div className="pl-5 space-y-0.5">
-                {catControl.rules.slice(0, 10).map(rule => (
-                  <div key={rule.value} className={`flex items-center gap-1.5 ${catControl.hiddenValues.includes(rule.value) ? "opacity-40" : ""}`}>
-                    <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: rule.color }} />
-                    <span className="text-[10px] text-muted-foreground truncate">{rule.value}</span>
-                  </div>
-                ))}
+                {catControl.rules.slice(0, 10).map((rule, i) => {
+                  const allHidden = rule.values.length > 0 && rule.values.every(v => catControl.hiddenValues.includes(v));
+                  const label = rule.values.slice(0, 2).join(", ") + (rule.values.length > 2 ? ` +${rule.values.length - 2}` : "");
+                  return (
+                    <div key={i} className={`flex items-center gap-1.5 ${allHidden ? "opacity-40" : ""}`}>
+                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: rule.color }} />
+                      <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+                    </div>
+                  );
+                })}
                 {catControl.rules.length > 10 && (
                   <span className="text-[9px] text-muted-foreground pl-3.5">+{catControl.rules.length - 10} more</span>
                 )}
@@ -401,12 +413,12 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
               <span className="text-[11px] font-medium truncate flex-1" title={layer.table.table_name}>{toTitleCase(layer.table.table_name)}</span>
               <button onClick={e => { e.stopPropagation(); handleZoom(layer); }}
                 className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5" title="Zoom to extent">
-                <Locate className="h-5 w-5" />
+                <Locate className="h-3.5 w-3.5" />
               </button>
               <button onClick={e => { e.stopPropagation(); onToggleVisible(layer.id); }}
                 className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5"
                 title={layer.visible ? "Hide layer" : "Show layer"}>
-                {layer.visible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+                {layer.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               </button>
               {layerControls.length > 0 && (
                 <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${isCollapsed ? "" : "rotate-180"}`} />
@@ -461,9 +473,11 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
 function BasemapsPanel({ basemap, onSetBasemap }: { basemap: string; onSetBasemap: (b: string) => void }) {
   return (
     <div className="p-3 grid grid-cols-2 gap-2">
-      {BASEMAP_OPTIONS.map(({ key, label }) => (
+      {BASEMAP_OPTIONS.map(({ key, label, thumb }) => (
         <button key={key} onClick={() => onSetBasemap(key)}
-          className={`px-3 py-2 rounded-md text-[11px] font-medium text-left transition-colors border ${basemap === key ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted border-transparent"}`}>
+          className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium text-left transition-colors border ${basemap === key ? "border-primary bg-primary/5 text-foreground" : "border-border hover:bg-muted"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={thumb} alt={label} className="w-6 h-6 rounded shrink-0 object-cover border" />
           {label}
         </button>
       ))}
@@ -477,7 +491,7 @@ function BarButton({ icon, label, active, onClick }: {
 }) {
   return (
     <button onClick={onClick} title={label}
-      className={`flex items-center justify-center h-9 w-9 rounded transition-colors ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+      className={`flex items-center justify-center h-7 w-7 rounded transition-colors ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
       {icon}
     </button>
   );
@@ -512,14 +526,14 @@ export function ShareMapBar({
   return (
     <div ref={barRef} className="absolute top-0 left-0 right-0 z-20">
       {/* Bar */}
-      <div className="h-11 flex items-center px-3 gap-3 bg-background/95 backdrop-blur-sm border-b shadow-sm">
+      <div className="h-10 flex items-center px-3 gap-3 bg-background/95 backdrop-blur-sm border-b shadow-sm">
         {/* Left: logo + name */}
         <Link href="/" title="PostGIS Frontend" className="shrink-0 hover:opacity-70 transition-opacity">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/Postgresql_elephant.png" alt="PostGIS Frontend" className="w-7 h-7 shrink-0" />
         </Link>
         {mapName && (
-          <span className="text-[16px] font-semibold truncate max-w-[200px] sm:max-w-sm mr-2" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
+          <span className="text-base font-semibold truncate max-w-[200px] sm:max-w-sm">
             {mapName}
           </span>
         )}
@@ -529,7 +543,7 @@ export function ShareMapBar({
         {/* Right: panel buttons */}
         {hasLayers && (
           <BarButton
-            icon={<BookOpen className="h-5 w-5" />}
+            icon={<BookOpen className="h-4 w-4" />}
             label="Legend"
             active={activePanel === "legend"}
             onClick={() => togglePanel("legend")}
@@ -537,14 +551,14 @@ export function ShareMapBar({
         )}
         {(hasLayers || hasControls) && (
           <BarButton
-            icon={<LayersIcon className="h-5 w-5" />}
+            icon={<LayersIcon className="h-4 w-4" />}
             label="Layers"
             active={activePanel === "layers"}
             onClick={() => togglePanel("layers")}
           />
         )}
         <BarButton
-          icon={<MapIcon className="h-5 w-5" />}
+          icon={<MapIcon className="h-4 w-4" />}
           label="Basemaps"
           active={activePanel === "basemaps"}
           onClick={() => togglePanel("basemaps")}
@@ -559,7 +573,7 @@ export function ShareMapBar({
               {activePanel === "legend" ? "Legend" : activePanel === "layers" ? "Layers" : "Basemaps"}
             </span>
             <button onClick={() => setActivePanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
-              <X className="h-5 w-5" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
           {activePanel === "legend" && <LegendPanel layers={layers} />}

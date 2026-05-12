@@ -32,21 +32,26 @@ async function ensureTable(): Promise<void> {
     ALTER TABLE _postgis_frontend_saved_views
       ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE
   `);
+  await getPool().query(`
+    ALTER TABLE _postgis_frontend_saved_views
+      ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE
+  `);
   _ready = true;
 }
 
-// GET /api/pg/saved-views?connectionId=ID
+// GET /api/pg/saved-views?connectionId=ID&archived=false
 export async function GET(req: NextRequest) {
   const connectionId = req.nextUrl.searchParams.get("connectionId");
   if (!connectionId) return NextResponse.json({ error: "connectionId required" }, { status: 400 });
+  const showArchived = req.nextUrl.searchParams.get("archived") === "true";
   try {
     await ensureTable();
     const { rows } = await getPool().query(
-      `SELECT id, name, state_json, is_public, created_at, updated_at
+      `SELECT id, name, state_json, is_public, archived, created_at, updated_at
        FROM _postgis_frontend_saved_views
-       WHERE connection_id = $1
-       ORDER BY created_at DESC`,
-      [connectionId]
+       WHERE connection_id = $1 AND archived = $2
+       ORDER BY updated_at DESC`,
+      [connectionId, showArchived]
     );
     return NextResponse.json({ views: rows });
   } catch (e: any) {

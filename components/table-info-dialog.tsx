@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, Check, X } from "lucide-react";
+import { Pencil, Trash2, Check, X, Plus } from "lucide-react";
 
 interface ColumnInfo {
   column_name: string;
@@ -74,6 +74,13 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
   const [dropLoading, setDropLoading] = React.useState(false);
   const [dropError, setDropError] = React.useState<string | null>(null);
 
+  // Add field state
+  const [addingField, setAddingField] = React.useState(false);
+  const [newFieldName, setNewFieldName] = React.useState("");
+  const [newFieldType, setNewFieldType] = React.useState("text");
+  const [addError, setAddError] = React.useState<string | null>(null);
+  const [addLoading, setAddLoading] = React.useState(false);
+
   function loadInfo() {
     if (!connectionId || !schema || !table) return;
     setLoading(true);
@@ -100,6 +107,10 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
       loadInfo();
       setRenamingCol(null);
       setDroppingCol(null);
+      setAddingField(false);
+      setNewFieldName("");
+      setNewFieldType("text");
+      setAddError(null);
     }
   }, [open, connectionId, schema, table]);
 
@@ -126,6 +137,25 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
       setRenameError(e.message);
     } finally {
       setRenameLoading(false);
+    }
+  }
+
+  async function handleAddField() {
+    const name = newFieldName.trim();
+    if (!VALID_IDENT.test(name)) { setAddError("Letters, numbers, underscores only"); return; }
+    setAddLoading(true);
+    setAddError(null);
+    try {
+      await alterColumn("add", { column: name, type: newFieldType });
+      setAddingField(false);
+      setNewFieldName("");
+      setNewFieldType("text");
+      loadInfo();
+      onChanged?.();
+    } catch (e: any) {
+      setAddError(e.message);
+    } finally {
+      setAddLoading(false);
     }
   }
 
@@ -177,7 +207,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
           <div className="px-5 pb-3 flex flex-wrap gap-2">
             {geometry.map((g) => (
               <div key={g.column_name} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className="font-mono text-foreground font-medium">{g.column_name}</span>
+                <span className="text-foreground font-medium">{g.column_name}</span>
                 <span className="text-muted-foreground/40">·</span>
                 <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">{g.type}</Badge>
                 <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal">SRID {g.srid}</Badge>
@@ -209,7 +239,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
           </TabsList>
 
           {/* COLUMNS */}
-          <TabsContent value="columns" className="flex-1 min-h-0 flex flex-col mt-0 px-5 pb-5">
+          <TabsContent value="columns" className="flex-1 min-h-0 flex flex-col mt-0 px-5 pb-5 gap-0">
             <ScrollArea className="flex-1 min-h-0 mt-3">
               <table className="w-full text-xs">
                 <thead>
@@ -228,7 +258,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                     return (
                       <React.Fragment key={col.column_name}>
                         <tr className="border-b last:border-0 hover:bg-muted/30 group">
-                          <td className="py-1.5 pr-3 font-mono">
+                          <td className="py-1.5 pr-3">
                             {col.column_name}
                             {col.is_identity === "YES" && (
                               <Badge variant="secondary" className="ml-1.5 h-3.5 px-1 text-[9px] font-normal">identity</Badge>
@@ -277,7 +307,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                                 <Input
                                   value={renameVal}
                                   onChange={(e) => setRenameVal(e.target.value)}
-                                  className="h-6 text-xs font-mono w-40"
+                                  className="h-6 text-xs w-40"
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") handleRenameColumn(col.column_name);
                                     if (e.key === "Escape") setRenamingCol(null);
@@ -307,7 +337,7 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                             <td colSpan={5} className="py-2 px-2 bg-destructive/5 border-b">
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px] text-muted-foreground">
-                                  Drop <span className="font-mono font-semibold">{col.column_name}</span>?
+                                  Drop <span className="font-semibold">{col.column_name}</span>?
                                   This cannot be undone.
                                 </span>
                                 <Button
@@ -334,6 +364,49 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                 </tbody>
               </table>
             </ScrollArea>
+
+            {/* Add field */}
+            {addingField ? (
+              <div className="border-t pt-3 mt-1 space-y-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Input
+                    autoFocus
+                    value={newFieldName}
+                    onChange={e => { setNewFieldName(e.target.value); setAddError(null); }}
+                    onKeyDown={e => { if (e.key === "Enter") handleAddField(); if (e.key === "Escape") setAddingField(false); }}
+                    placeholder="field_name"
+                    className="h-7 text-xs font-mono flex-1 min-w-0"
+                  />
+                  <select
+                    value={newFieldType}
+                    onChange={e => setNewFieldType(e.target.value)}
+                    className="h-7 text-[11px] bg-muted border rounded px-1.5 outline-none focus:ring-1 focus:ring-ring shrink-0"
+                  >
+                    {["text","integer","bigint","numeric","real","boolean","date","timestamp","timestamptz","jsonb"].map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-green-600 hover:text-green-700"
+                    disabled={addLoading} onClick={handleAddField} title="Add (Enter)">
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0"
+                    onClick={() => setAddingField(false)} title="Cancel (Esc)">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                {addError && <p className="text-[10px] text-destructive">{addError}</p>}
+              </div>
+            ) : (
+              <Button
+                variant="ghost" size="sm"
+                className="mt-2 h-7 px-2 text-xs text-muted-foreground gap-1.5 self-start shrink-0"
+                onClick={() => { setAddingField(true); setAddError(null); setNewFieldName(""); setNewFieldType("text"); }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New field
+              </Button>
+            )}
           </TabsContent>
 
           {/* INDEXES */}
@@ -354,9 +427,9 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                   <tbody>
                     {indexes.map((idx) => (
                       <tr key={idx.index_name} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="py-1.5 pr-3 font-mono">{idx.index_name}</td>
+                        <td className="py-1.5 pr-3">{idx.index_name}</td>
                         <td className="py-1.5 pr-3 uppercase text-muted-foreground">{idx.access_method}</td>
-                        <td className="py-1.5 pr-3 font-mono text-muted-foreground">
+                        <td className="py-1.5 pr-3 text-muted-foreground">
                           {(Array.isArray(idx.columns)
                             ? idx.columns
                             : String(idx.columns).replace(/^{|}$/g, "").split(",")
@@ -390,10 +463,10 @@ export function TableInfoDialog({ open, onOpenChange, connectionId, schema, tabl
                   {triggers.map((trig) => (
                     <div key={trig.trigger_name} className="rounded-md border p-3 space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-semibold">{trig.trigger_name}</span>
+                        <span className="text-xs font-semibold">{trig.trigger_name}</span>
                         <Badge variant="secondary" className="h-4 px-1 text-[9px]">{trig.timing} {trig.event}</Badge>
                       </div>
-                      <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-words font-mono leading-relaxed">
+                      <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">
                         {trig.definition}
                       </pre>
                     </div>

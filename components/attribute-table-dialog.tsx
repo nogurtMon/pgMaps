@@ -5,11 +5,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronUp, ChevronDown, Search, X, Loader2, Filter, Columns, Plus, Locate } from "lucide-react";
+import { ChevronUp, ChevronDown, Search, X, Loader2, Filter, Columns, Plus, Locate, Trash2 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { AttrOperator, AttrFilter, LayerControl } from "@/lib/types";
+import type { AttrOperator, AttrFilter, LayerControl, MapLayer } from "@/lib/types";
 
 const OPERATOR_LABELS: Record<AttrOperator, string> = {
   ilike: "contains",
@@ -47,11 +47,15 @@ interface Props {
   onFiltersChange?: (filters: LayerControl[]) => void;
   onDataChanged?: () => void;
   onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
+  layers?: MapLayer[];
+  activeLayerId?: string;
+  onLayerChange?: (layer: MapLayer) => void;
+  editMode?: boolean;
 }
 
 const PAGE_SIZE = 100;
 
-export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId, schema, table, geomCol, filters: externalFilters, onFiltersChange, onDataChanged, onFlyTo }: Props) {
+export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId, schema, table, geomCol, filters: externalFilters, onFiltersChange, onDataChanged, onFlyTo, layers, activeLayerId, onLayerChange, editMode }: Props) {
   const [columns, setColumns] = React.useState<ColumnMeta[]>([]);
   const [rows, setRows] = React.useState<Record<string, any>[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -72,6 +76,14 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
   const [hiddenCols, setHiddenCols] = React.useState<Set<string>>(new Set());
   const [showColPicker, setShowColPicker] = React.useState(false);
   const colPickerRef = React.useRef<HTMLDivElement>(null);
+
+  // Inline cell editing
+  const [editingCell, setEditingCell] = React.useState<{ ctid: string; col: string; value: string } | null>(null);
+  const [savingCell, setSavingCell] = React.useState(false);
+  const [cellError, setCellError] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
+  const [deletingRow, setDeletingRow] = React.useState<string | null>(null);
+  const editCancelRef = React.useRef(false);
 
   // editableCols: non-geometry columns (used for filters)
   const editableCols = React.useMemo(
@@ -188,6 +200,52 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
     } catch {}
   }
 
+  async function commitCell() {
+    if (!editingCell || savingCell) return;
+    const { ctid, col, value } = editingCell;
+    setSavingCell(true);
+    setCellError(null);
+    try {
+      const res = await fetch("/api/pg/feature-row", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, shareId, schema, table, ctid, updates: { [col]: value === "" ? null : value } }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      const newCtid = data.ctid ?? ctid;
+      setRows(prev => prev.map(r =>
+        r._ctid === ctid ? { ...r, [col]: value === "" ? null : value, _ctid: newCtid } : r
+      ));
+      onDataChanged?.();
+      setEditingCell(null);
+    } catch (e: any) {
+      setCellError(e.message);
+    } finally {
+      setSavingCell(false);
+    }
+  }
+
+  async function deleteRow(ctid: string) {
+    setDeletingRow(ctid);
+    try {
+      const res = await fetch("/api/pg/feature-row", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, shareId, schema, table, ctid }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      setRows(prev => prev.filter(r => r._ctid !== ctid));
+      setTotal(prev => prev - 1);
+      onDataChanged?.();
+    } catch (e: any) {
+      console.error("Delete failed:", e.message);
+    } finally {
+      setDeletingRow(null);
+      setDeleteConfirm(null);
+    }
+  }
+
   function addAttrFilter() {
     const firstCol = editableCols[0]?.name ?? "";
     setAttrFilters((prev) => [...prev, { id: crypto.randomUUID(), type: "attribute" as const, enabled: true, shared: false, column: firstCol, operator: "ilike" as AttrOperator, value: "" }]);
@@ -232,12 +290,33 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
         {/* Header */}
         <DialogHeader className="pl-4 pr-12 pt-4 pb-3 shrink-0 border-b">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <DialogTitle className="text-sm font-semibold font-mono">
-              {schema}.{table}
+            <DialogTitle className="text-sm font-semibold flex items-center gap-2 min-w-0">
+              <span className="truncate">{schema}.{table}</span>
               {!loading && (
-                <span className="ml-2 text-xs text-muted-foreground font-sans font-normal">
+                <span className="text-xs text-muted-foreground font-sans font-normal shrink-0">
                   {total.toLocaleString()} rows
                 </span>
+              )}
+              {layers && layers.length > 1 && onLayerChange && (
+                <Select
+                  value={activeLayerId}
+                  onValueChange={(id) => {
+                    const l = layers.find(l => l.id === id);
+                    if (l) onLayerChange(l);
+                  }}
+                >
+                  <SelectTrigger className="h-6 text-xs gap-1 px-2 font-sans font-normal w-auto shrink-0 border-dashed">
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Switch layer</span>
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    {layers.map(l => (
+                      <SelectItem key={l.id} value={l.id} className="text-xs">
+                        {l.table.table_schema}.{l.table.table_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </DialogTitle>
             <div className="flex items-center gap-2 flex-wrap">
@@ -322,7 +401,7 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
                               });
                             }}
                           />
-                          <span className="font-mono truncate">{col.name}</span>
+                          <span className="truncate">{col.name}</span>
                         </label>
                       ))}
                     </div>
@@ -349,12 +428,12 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
                   value={f.column}
                   onValueChange={(col) => applyAttrFilter(attrFilters.map((fi) => fi.id === f.id ? { ...fi, column: col, value: "" } : fi))}
                 >
-                  <SelectTrigger className="h-7 text-xs w-36 font-mono">
+                  <SelectTrigger className="h-7 text-xs w-36">
                     <SelectValue placeholder="column" />
                   </SelectTrigger>
                   <SelectContent>
                     {editableCols.map((c) => (
-                      <SelectItem key={c.name} value={c.name} className="text-xs font-mono">{c.name}</SelectItem>
+                      <SelectItem key={c.name} value={c.name} className="text-xs">{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -408,8 +487,8 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-background z-10 border-b shadow-sm">
                 <tr>
-                  {onFlyTo && activeGeomCol && (
-                    <th className="px-1 py-2 w-7 border-r" />
+                  {((onFlyTo && activeGeomCol) || editMode) && (
+                    <th className="px-1 py-2 w-10 border-r" />
                   )}
                   {displayCols.map((col) => (
                     <th
@@ -418,7 +497,7 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
                       onClick={() => !col.isGeom && handleSort(col.name)}
                     >
                       <div className="flex items-center gap-1">
-                        <span className="font-mono font-medium text-foreground">{col.name}</span>
+                        <span className="font-medium text-foreground">{col.name}</span>
                         {sortCol === col.name && (
                           sortDir === "asc"
                             ? <ChevronUp className="h-3 w-3 text-primary shrink-0" />
@@ -436,33 +515,80 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
                     key={row._ctid}
                     className={`border-b ${ri % 2 === 0 ? "" : "bg-muted/20"} hover:bg-muted/40 group`}
                   >
-                    {onFlyTo && activeGeomCol && (
-                      <td className="px-1 border-r w-7">
-                        <button
-                          onClick={() => zoomToRow(row._ctid)}
-                          className="p-0.5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted transition-all"
-                          title="Zoom to feature"
-                        >
-                          <Locate className="h-3 w-3" />
-                        </button>
+                    {((onFlyTo && activeGeomCol) || editMode) && (
+                      <td className="px-1 border-r w-10">
+                        <div className="flex items-center gap-0.5">
+                          {onFlyTo && activeGeomCol && (
+                            <button
+                              onClick={() => zoomToRow(row._ctid)}
+                              className="p-0.5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted transition-all shrink-0"
+                              title="Zoom to feature"
+                            >
+                              <Locate className="h-3 w-3" />
+                            </button>
+                          )}
+                          {editMode && (
+                            deletingRow === row._ctid ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+                            ) : deleteConfirm === row._ctid ? (
+                              <div className="flex items-center gap-0.5">
+                                <button onClick={() => deleteRow(row._ctid)} className="text-[9px] text-destructive font-medium hover:underline px-0.5">Del</button>
+                                <button onClick={() => setDeleteConfirm(null)} className="text-[9px] text-muted-foreground hover:underline px-0.5">No</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setDeleteConfirm(row._ctid)}
+                                className="p-0.5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-muted transition-all shrink-0"
+                                title="Delete row"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )
+                          )}
+                        </div>
                       </td>
                     )}
                     {displayCols.map((col) => {
                       const val = row[col.name];
+                      const isEditing = editMode && !col.isGeom && editingCell?.ctid === row._ctid && editingCell?.col === col.name;
+                      if (isEditing) {
+                        return (
+                          <td key={col.name} className="px-1 py-0.5 border-r last:border-r-0">
+                            <input
+                              className="w-full text-xs bg-background border border-primary rounded px-1 py-0.5 outline-none min-w-0"
+                              value={editingCell!.value}
+                              autoFocus
+                              disabled={savingCell}
+                              onChange={e => setEditingCell(prev => prev ? { ...prev, value: e.target.value } : null)}
+                              onKeyDown={e => {
+                                if (e.key === "Escape") { editCancelRef.current = true; setEditingCell(null); setCellError(null); }
+                                if (e.key === "Enter") { e.preventDefault(); commitCell(); }
+                              }}
+                              onBlur={() => { if (editCancelRef.current) { editCancelRef.current = false; return; } commitCell(); }}
+                            />
+                            {cellError && <div className="text-[9px] text-destructive mt-0.5">{cellError}</div>}
+                          </td>
+                        );
+                      }
                       return (
                         <td
                           key={col.name}
-                          className="px-2 py-1 border-r last:border-r-0 max-w-[16rem] overflow-hidden"
+                          className={`px-2 py-1 border-r last:border-r-0 max-w-[16rem] overflow-hidden ${editMode && !col.isGeom ? "cursor-pointer hover:bg-primary/5" : ""}`}
                           title={val == null ? "NULL" : String(val)}
+                          onClick={() => {
+                            if (!editMode || col.isGeom) return;
+                            setDeleteConfirm(null);
+                            setCellError(null);
+                            setEditingCell({ ctid: row._ctid, col: col.name, value: val == null ? "" : String(val) });
+                          }}
                         >
                           {val == null ? (
                             <span className="text-muted-foreground/40 italic select-none">null</span>
                           ) : col.isGeom ? (
-                            <span className="text-muted-foreground font-mono text-[10px] truncate block">
+                            <span className="text-muted-foreground text-[10px] truncate block">
                               {String(val).slice(0, 48)}{String(val).length > 48 ? "…" : ""}
                             </span>
                           ) : (
-                            <span className="font-mono truncate block">{String(val)}</span>
+                            <span className="truncate block">{String(val)}</span>
                           )}
                         </td>
                       );
@@ -471,7 +597,7 @@ export function AttributeTableDialog({ open, onOpenChange, connectionId, shareId
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={displayCols.length} className="text-center py-12 text-muted-foreground">
+                    <td colSpan={displayCols.length + (((onFlyTo && activeGeomCol) || editMode) ? 1 : 0)} className="text-center py-12 text-muted-foreground">
                       {search ? "No rows match the search." : "This table has no rows."}
                     </td>
                   </tr>

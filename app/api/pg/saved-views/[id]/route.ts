@@ -14,19 +14,39 @@ function getPool(): Pool {
   return _pool;
 }
 
-// PUT /api/pg/saved-views/[id]  { name?, state?, is_public? }
+// GET /api/pg/saved-views/[id]
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    const { rows } = await getPool().query(
+      `SELECT id, name, state_json, is_public, archived, created_at, updated_at
+       FROM _postgis_frontend_saved_views WHERE id = $1`,
+      [id]
+    );
+    if (rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ view: rows[0] });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+// PUT /api/pg/saved-views/[id]  { name?, state?, is_public?, archived? }
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { name, state, is_public } = await req.json();
+  const { name, state, is_public, archived } = await req.json();
   try {
     const setClauses: string[] = ["updated_at = NOW()"];
     const queryParams: any[] = [];
     if (name?.trim()) { queryParams.push(name.trim()); setClauses.push(`name = $${queryParams.length}`); }
     if (state !== undefined) { queryParams.push(JSON.stringify(state)); setClauses.push(`state_json = $${queryParams.length}`); }
     if (is_public !== undefined) { queryParams.push(is_public); setClauses.push(`is_public = $${queryParams.length}`); }
+    if (archived !== undefined) { queryParams.push(archived); setClauses.push(`archived = $${queryParams.length}`); }
     queryParams.push(id);
     await getPool().query(
       `UPDATE _postgis_frontend_saved_views SET ${setClauses.join(", ")} WHERE id = $${queryParams.length}`,

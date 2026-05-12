@@ -1,13 +1,17 @@
 import { Pool } from "pg";
-
-// Shares are saved views with is_public = TRUE.
-// This module is a thin layer over _postgis_frontend_saved_views.
+import { createHash } from "crypto";
 
 export interface ViewIndexEntry {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ShareGetResult {
+  config: Record<string, any> | null;
+  requiresPassword: boolean;
+  isExpired: boolean;
 }
 
 function getStorageUrl(): string {
@@ -37,46 +41,78 @@ async function ensureTable(): Promise<void> {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await getPool().query(`
-    ALTER TABLE _postgis_frontend_saved_views
-      ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE
-  `);
+  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+  await getPool().query(`ALTER TABLE _postgis_frontend_saved_views ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
   _ready = true;
 }
 
-// Returns state_json merged with connectionId so resolveShareDsn can find it.
-export async function getShare(id: string): Promise<Record<string, any> | null> {
-  await ensureTable();
-  const { rows } = await getPool().query(
-    `SELECT state_json, connection_id FROM _postgis_frontend_saved_views WHERE id = $1 AND is_public = TRUE`,
-    [id]
-  );
-  if (!rows[0]) return null;
-  return { ...rows[0].state_json, connectionId: rows[0].connection_id };
+export function hashPassword(id: string, password: string): string {
+  return createHash("sha256").update(`${id}:${password}:postgis-share`).digest("hex");
 }
 
-// Upserts a public view. connectionId must be in config; it is stored in the column, not in state_json.
-export async function setShare(id: string, name: string, config: Record<string, any>, _isNew: boolean, _now: string): Promise<void> {
+export async function getShare(id: string, password?: string): Promise<ShareGetResult> {
+  await ensureTable();
+  const { rows } = await getPool().query(
+    `SELECT state_json, connection_id, password_hash, expires_at
+     FROM _postgis_frontend_saved_views WHERE id = $1 AND is_public = TRUE`,
+    [id]
+  );
+  if (!rows[0]) return { config: null, requiresPassword: false, isExpired: false };
+
+  const row = rows[0];
+
+  if (row.expires_at && new Date(row.expires_at) < new Date()) {
+    return { config: null, requiresPassword: false, isExpired: true };
+  }
+
+  if (row.password_hash) {
+    if (!password) return { config: null, requiresPassword: true, isExpired: false };
+    if (hashPassword(id, password) !== row.password_hash) {
+      return { config: null, requiresPassword: true, isExpired: false };
+    }
+  }
+
+  return {
+    config: { ...row.state_json, connectionId: row.connection_id },
+    requiresPassword: false,
+    isExpired: false,
+  };
+}
+
+export async function setShare(
+  id: string,
+  name: string,
+  config: Record<string, any>,
+  _isNew: boolean,
+  _now: string,
+  passwordHash?: string | null,
+  expiresAt?: string | null
+): Promise<void> {
   await ensureTable();
   const { connectionId, ...stateJson } = config;
   if (!connectionId) throw new Error("Share config missing connectionId");
   await getPool().query(
-    `INSERT INTO _postgis_frontend_saved_views (id, connection_id, name, state_json, is_public)
-     VALUES ($1, $2, $3, $4::jsonb, TRUE)
+    `INSERT INTO _postgis_frontend_saved_views
+       (id, connection_id, name, state_json, is_public, password_hash, expires_at)
+     VALUES ($1, $2, $3, $4::jsonb, TRUE, $5, $6)
      ON CONFLICT (id) DO UPDATE
-       SET name       = EXCLUDED.name,
-           state_json = EXCLUDED.state_json,
-           is_public  = TRUE,
-           updated_at = NOW()`,
-    [id, connectionId, name, JSON.stringify(stateJson)]
+       SET name          = EXCLUDED.name,
+           state_json    = EXCLUDED.state_json,
+           is_public     = TRUE,
+           password_hash = EXCLUDED.password_hash,
+           expires_at    = EXCLUDED.expires_at,
+           updated_at    = NOW()`,
+    [id, connectionId, name, JSON.stringify(stateJson), passwordHash ?? null, expiresAt ?? null]
   );
 }
 
-// Unpublishes the view (keeps the saved view row, just makes it private).
 export async function deleteShare(id: string): Promise<void> {
   await ensureTable();
   await getPool().query(
-    `UPDATE _postgis_frontend_saved_views SET is_public = FALSE WHERE id = $1`, [id]
+    `UPDATE _postgis_frontend_saved_views SET is_public = FALSE WHERE id = $1`,
+    [id]
   );
 }
 

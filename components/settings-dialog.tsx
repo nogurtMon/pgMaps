@@ -86,7 +86,7 @@ export function SettingsDialog({ open, onOpenChange, dsn, onSave, onDisconnect }
               placeholder="postgresql://user:password@host:5432/dbname"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="font-mono text-sm"
+              className="text-sm"
             />
           </div>
 
@@ -97,7 +97,7 @@ export function SettingsDialog({ open, onOpenChange, dsn, onSave, onDisconnect }
               <div className="flex-1 min-w-0 space-y-1">
                 <p className="font-medium text-amber-800 dark:text-amber-300">SSL required</p>
                 <p className="text-amber-700 dark:text-amber-400 text-xs">
-                  This host requires <code className="font-mono">sslmode=require</code>. Without it the connection will be refused.
+                  This host requires <code className="">sslmode=require</code>. Without it the connection will be refused.
                 </p>
                 <Button
                   size="sm"

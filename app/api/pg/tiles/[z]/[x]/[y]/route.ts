@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Pool } from "pg";
 import { getPool } from "@/lib/pool";
 import { resolveDsnFromRequest } from "@/lib/resolve-dsn";
+import { getCachedTile, setCachedTile } from "@/lib/tile-cache";
 
 
 // Safe SQL identifier quoting
@@ -55,6 +56,8 @@ export async function GET(
       connectionId: searchParams.get("connectionId"),
       shareId: searchParams.get("shareId"),
       dsn: searchParams.get("dsn"),
+      schema,
+      table,
     });
   } catch (e: any) {
     console.error("[tiles] DSN resolution failed:", e.message, { schema, table });
@@ -73,6 +76,23 @@ export async function GET(
   const filtersParam = searchParams.get("filters");
   if (filtersParam) {
     try { filters = JSON.parse(filtersParam); } catch {}
+  }
+
+  // Style columns must be included at every zoom level for client-side color rendering
+  const scParam = searchParams.get("sc") ?? "";
+  const styleColumns = scParam ? scParam.split(",").filter(Boolean) : [];
+
+  const tileKey = `${dsn}|${schema}|${table}|${geomCol}|${z}|${x}|${y}|${filtersParam ?? ""}|${searchParams.get("v") ?? ""}|${scParam}`;
+  const cached = getCachedTile(tileKey);
+  if (cached.hit) {
+    if (!cached.data) return new NextResponse(null, { status: 204 });
+    return new NextResponse(new Uint8Array(cached.data), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.mapbox-vector-tile",
+        "Cache-Control": "no-store",
+      },
+    });
   }
 
   const pool = getPool(dsn);
@@ -167,17 +187,27 @@ export async function GET(
     const schemaQ = qi(schema!);
     const tableQ  = qi(table!);
     const geomQ   = qi(geomCol);
+    const tolerance = z <= 4 ? 10000 : z <= 6 ? 2000 : 0;
+    const geomExpr = tolerance > 0
+      ? `ST_SimplifyPreserveTopology(ST_Transform(${geomQ}, 3857), ${tolerance})`
+      : `ST_Transform(${geomQ}, 3857)`;
     function buildSql(cols: string[]) {
-      const sel = cols.length > 0 ? `, ${cols.map(qi).join(", ")}` : "";
+      const propColSet = new Set(cols);
+      // Always include style columns (categorical/threshold/numeric) so colors render at all zooms
+      const required = styleColumns.filter(c => propColSet.has(c) && isValidColName(c));
+      const rest = z < 12 ? [] : cols;
+      const displayCols = [...new Set([...required, ...rest])];
+      const sel = displayCols.length > 0 ? `, ${displayCols.map(qi).join(", ")}` : "";
       return `
         SELECT ST_AsMVT(tile, $1, 4096, 'geom') AS mvt
         FROM (
           SELECT
             ST_AsMVTGeom(
-              ST_Transform(${geomQ}, 3857),
+              ${geomExpr},
               ST_TileEnvelope($2, $3, $4),
               4096, 64, true
-            ) AS geom
+            ) AS geom,
+            ctid::text AS _ctid
             ${sel}
           FROM ${schemaQ}.${tableQ}
           WHERE ${geomQ} && ${envelopeExpr}
@@ -187,16 +217,22 @@ export async function GET(
       `;
     }
 
-    // Use explicit client so we can destroy broken connections on error
-    // (pool.query releases errored clients back to the pool, recycling dead connections)
+    // Tile query timeout: low zooms scan huge areas and can hang for 10s+.
+    // Cap at 8s — return empty tile rather than crashing the pool.
+    const TILE_TIMEOUT_MS = 8_000;
+
     async function runQuery(sql: string, params: any[]): Promise<any[]> {
       const client = await pool.connect();
       try {
+        await client.query("BEGIN");
+        await client.query(`SET LOCAL statement_timeout = ${TILE_TIMEOUT_MS}`);
         const { rows } = await client.query(sql, params);
+        await client.query("COMMIT");
         client.release();
         return rows;
       } catch (e) {
-        client.release(new Error("destroy")); // destroy — don't recycle a broken connection
+        try { await client.query("ROLLBACK"); } catch {}
+        client.release(new Error("destroy"));
         throw e;
       }
     }
@@ -216,17 +252,29 @@ export async function GET(
     }
     const mvt: Buffer | null = rows[0]?.mvt ?? null;
     if (!mvt || mvt.length === 0) {
+      setCachedTile(tileKey, null);
       return new NextResponse(null, { status: 204 });
     }
-    return new NextResponse(Buffer.from(mvt), {
+    const mvtBuf = Buffer.from(mvt);
+    setCachedTile(tileKey, mvtBuf);
+    return new NextResponse(mvtBuf, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.mapbox-vector-tile",
-        "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+        "Cache-Control": "no-store",
       },
     });
   } catch (e: any) {
-    console.error("[tiles 500]", { schema, table, z, x, y, geomCol, srid, error: e.message, code: e.code, detail: e.detail });
-    return NextResponse.json({ error: e.message || e.code || "unknown error" }, { status: 500 });
+    const msg: string = e.message ?? "";
+    const code: string = e.code ?? "";
+    // Any PostgreSQL error (has a code) → return empty tile rather than 500.
+    // The map keeps working; the error is logged server-side for debugging.
+    // Non-pg errors (missing params, bad DSN) are caught earlier and already return 4xx.
+    if (code) {
+      console.error("[tiles pg-err]", { schema, table, z, x, y, code, error: msg });
+      return new NextResponse(null, { status: 204 });
+    }
+    console.error("[tiles 500]", { schema, table, z, x, y, geomCol, srid, error: msg, detail: e.detail });
+    return NextResponse.json({ error: msg || "unknown error" }, { status: 500 });
   }
 }

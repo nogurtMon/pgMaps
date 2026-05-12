@@ -32,7 +32,13 @@ export interface RadiusScale {
 }
 
 export interface FillColorRule {
-  value: string;
+  values: string[];
+  color: string;
+}
+
+export interface ColorRange {
+  from: number | null;
+  to: number | null;
   color: string;
 }
 
@@ -81,6 +87,8 @@ export type LayerControl =
       aboveColor: string; belowColor: string;
       target: "fill" | "stroke";
       label?: string;
+      ranges?: ColorRange[];
+      defaultColor?: string;
     };
 
 // Backward-compat aliases
@@ -108,11 +116,23 @@ export interface MapLayer {
   controls: LayerControl[];
   dataVersion?: number;
   geomTypeOverride?: string | null;
+  minZoom?: number;
 }
 
-export const BASEMAP_OPTIONS: { key: string; label: string }[] = [
-  { key: "liberty",   label: "Street"    },
-  { key: "satellite", label: "Satellite" },
+export interface UndoableOp {
+  id: string;
+  label: string;
+  layerId: string;
+  revert: () => Promise<void>;
+  apply?: () => Promise<void>; // redo: re-apply the operation after an undo
+}
+
+export const BASEMAP_OPTIONS: { key: string; label: string; thumb: string }[] = [
+  { key: "streets",   label: "Streets",   thumb: "/basemaps/street.svg"    },
+  { key: "satellite", label: "Satellite", thumb: "/basemaps/satellite.svg" },
+  { key: "hybrid",    label: "Hybrid",    thumb: "/basemaps/satellite.svg" },
+  { key: "topo",      label: "Topo",      thumb: "/basemaps/street.svg"    },
+  { key: "dataviz",   label: "Dataviz",   thumb: "/basemaps/street.svg"    },
 ];
 
 export const LAYER_COLORS = [
@@ -150,7 +170,12 @@ export function migrateLayerControls(raw: any): LayerControl[] {
       controls.push({ ...base, type: "temporal", column: f.column ?? "", mode: f.mode ?? "all", from: f.from ?? "", to: f.to ?? "", dataMin: f.dataMin ?? "", dataMax: f.dataMax ?? "" });
     } else if (f.type === "categorical") {
       const cfStyle = f.target === "stroke" ? raw.style?.categoricalStroke : raw.style?.categoricalFill;
-      controls.push({ ...base, type: "categorical", column: f.column ?? "", rules: f.rules ?? (cfStyle?.column === f.column ? cfStyle.rules : []), defaultColor: f.defaultColor ?? cfStyle?.defaultColor ?? "#aaaaaa", hiddenValues: f.hiddenValues ?? [], target: f.target ?? "fill" });
+      const rawRules: any[] = f.rules ?? (cfStyle?.column === f.column ? cfStyle.rules : []) ?? [];
+      const migratedRules: FillColorRule[] = rawRules.map((r: any) => ({
+        values: r.values ?? (r.value !== undefined ? [String(r.value)] : []),
+        color: r.color ?? "#aaaaaa",
+      }));
+      controls.push({ ...base, type: "categorical", column: f.column ?? "", rules: migratedRules, defaultColor: f.defaultColor ?? cfStyle?.defaultColor ?? "#aaaaaa", hiddenValues: f.hiddenValues ?? [], target: f.target ?? "fill" });
     } else if (f.type === "numeric") {
       controls.push({ ...base, type: "numeric", column: f.column ?? "", min: f.min ?? 0, max: f.max ?? 0, dataMin: f.dataMin ?? 0, dataMax: f.dataMax ?? 0, minOutput: f.minOutput ?? 0.2, maxOutput: f.maxOutput ?? 1, target: f.target ?? "opacity" });
     } else if (f.type === "threshold") {
@@ -161,11 +186,17 @@ export function migrateLayerControls(raw: any): LayerControl[] {
   // Promote old style.categoricalFill/Stroke if not already represented
   if (raw.style?.categoricalFill && !controls.find(c => c.type === "categorical" && c.target === "fill")) {
     const cf = raw.style.categoricalFill;
-    controls.push({ id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: cf.column ?? "", rules: cf.rules ?? [], defaultColor: cf.defaultColor ?? "#aaaaaa", hiddenValues: [], target: "fill" });
+    const rawCfRules: any[] = cf.rules ?? [];
+    controls.push({ id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: cf.column ?? "",
+      rules: rawCfRules.map((r: any) => ({ values: r.values ?? (r.value !== undefined ? [String(r.value)] : []), color: r.color ?? "#aaaaaa" })),
+      defaultColor: cf.defaultColor ?? "#aaaaaa", hiddenValues: [], target: "fill" });
   }
   if (raw.style?.categoricalStroke && !controls.find(c => c.type === "categorical" && c.target === "stroke")) {
     const cs = raw.style.categoricalStroke;
-    controls.push({ id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: cs.column ?? "", rules: cs.rules ?? [], defaultColor: cs.defaultColor ?? "#aaaaaa", hiddenValues: [], target: "stroke" });
+    const rawCsRules: any[] = cs.rules ?? [];
+    controls.push({ id: crypto.randomUUID(), type: "categorical", enabled: true, shared: false, column: cs.column ?? "",
+      rules: rawCsRules.map((r: any) => ({ values: r.values ?? (r.value !== undefined ? [String(r.value)] : []), color: r.color ?? "#aaaaaa" })),
+      defaultColor: cs.defaultColor ?? "#aaaaaa", hiddenValues: [], target: "stroke" });
   }
   if (raw.style?.opacityScale && !controls.find(c => c.type === "numeric" && c.target === "opacity")) {
     const os = raw.style.opacityScale;

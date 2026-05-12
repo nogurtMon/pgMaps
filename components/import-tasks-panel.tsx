@@ -83,7 +83,7 @@ function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh(): void }) {
       {/* Done */}
       {task.phase === "done" && (
         <p className="text-[10px] text-muted-foreground">
-          {fmt(task.done)} {task.type === "arcgis" ? "features" : "rows"} → <span className="font-mono">{task.schema}.{task.table}</span>
+          {fmt(task.done)} {task.type === "arcgis" ? "features" : "rows"} → <span className="">{task.schema}.{task.table}</span>
         </p>
       )}
 
