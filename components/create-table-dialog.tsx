@@ -1220,7 +1220,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg h-[580px] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Create Table</DialogTitle>
           <DialogDescription>
@@ -1228,7 +1228,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2 flex flex-col flex-1 min-h-0">
           <TabsList className="w-full">
             <TabsTrigger value="scratch" className="flex-1 text-xs">From scratch</TabsTrigger>
             <TabsTrigger value="arcgis" className="flex-1 text-xs">From ArcGIS</TabsTrigger>
@@ -1236,7 +1236,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           </TabsList>
 
           {/* ── From scratch tab ── */}
-          <TabsContent value="scratch">
+          <TabsContent value="scratch" className="flex-1 overflow-y-auto min-h-0">
             <div className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -1326,7 +1326,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           </TabsContent>
 
           {/* ── ArcGIS tab ── */}
-          <TabsContent value="arcgis">
+          <TabsContent value="arcgis" className="flex-1 overflow-y-auto min-h-0">
             <div className="space-y-4 mt-2">
               <div className="space-y-1.5">
                 <Label htmlFor="arc-url" className="text-xs">Feature Server Layer URL</Label>
@@ -1417,7 +1417,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
           </TabsContent>
 
           {/* ── File tab ── */}
-          <TabsContent value="file">
+          <TabsContent value="file" className="flex-1 overflow-y-auto min-h-0">
             <div className="space-y-4 mt-2">
               {(filePhase === "idle" || filePhase === "parsing") && (
                 <div className="space-y-1.5">

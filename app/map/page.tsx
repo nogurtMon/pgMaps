@@ -30,6 +30,7 @@ export default function Home() {
   const { theme, setTheme } = useTheme();
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [editingConnectionId, setEditingConnectionId] = React.useState<string | undefined>(undefined);
   const [connectionsKey, setConnectionsKey] = React.useState(0);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [activeViewName, setActiveViewName] = React.useState<string | null>(null);
@@ -467,7 +468,8 @@ export default function Home() {
           onActiveLayerChange={setActiveLayerId}
           onZoomToLayer={zoomToLayer}
           onFlyTo={(bounds) => setZoomTarget({ bounds })}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => { setEditingConnectionId(undefined); setSettingsOpen(true); }}
+          onEditConnection={(id) => { setEditingConnectionId(id); setSettingsOpen(true); }}
           onConnectionLost={() => { clearConnection(); }}
         />}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -514,9 +516,10 @@ export default function Home() {
 
       <ConnectionsDialog
         open={settingsOpen}
-        onOpenChange={(v) => { setSettingsOpen(v); if (!v) setConnectionsKey((k) => k + 1); }}
+        onOpenChange={(v) => { setSettingsOpen(v); if (!v) { setConnectionsKey((k) => k + 1); setEditingConnectionId(undefined); } }}
         activeConnectionId={connectionId}
         onSelect={(id) => { setConnectionId(id); }}
+        initialEditId={editingConnectionId}
       />
       <ShareDialog
         open={shareOpen}

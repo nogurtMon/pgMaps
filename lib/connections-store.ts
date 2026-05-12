@@ -58,10 +58,11 @@ async function ensureTable(): Promise<void> {
     `INSERT INTO _postgis_frontend_connections (id, name, host, database, encrypted_dsn)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO UPDATE SET
+       name = EXCLUDED.name,
        host = EXCLUDED.host,
        database = EXCLUDED.database,
        encrypted_dsn = EXCLUDED.encrypted_dsn`,
-    [LOCAL_CONNECTION_ID, "Local Database", host, database, encryptDsn(storageUrl)]
+    [LOCAL_CONNECTION_ID, "Built-in Database", host, database, encryptDsn(storageUrl)]
   );
   _ready = true;
 }
@@ -104,6 +105,20 @@ export async function renameConnection(id: string, name: string): Promise<void> 
     `UPDATE _postgis_frontend_connections SET name = $2 WHERE id = $1`, [id, name.trim()]
   );
   if (!rowCount) throw new Error("Connection not found");
+}
+
+export async function updateConnection(id: string, name: string, rawDsn?: string): Promise<void> {
+  await ensureTable();
+  if (rawDsn) {
+    const { host, database } = parseHostDb(rawDsn);
+    const { rowCount } = await getPool().query(
+      `UPDATE _postgis_frontend_connections SET name = $2, host = $3, database = $4, encrypted_dsn = $5 WHERE id = $1`,
+      [id, name.trim(), host, database, encryptDsn(rawDsn)]
+    );
+    if (!rowCount) throw new Error("Connection not found");
+  } else {
+    await renameConnection(id, name);
+  }
 }
 
 export async function deleteConnection(id: string): Promise<void> {

@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getConnection, renameConnection, deleteConnection, LOCAL_CONNECTION_ID } from "@/lib/connections-store";
+import { getConnection, updateConnection, deleteConnection, LOCAL_CONNECTION_ID } from "@/lib/connections-store";
 import { getPool } from "@/lib/pool";
 import { evictDsnCache } from "@/lib/resolve-dsn";
 
-// GET /api/connections/[id] — test the connection
+// GET /api/connections/[id] — test connection, or return DSN with ?dsn=1
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     const dsn = await getConnection(id);
+    if (req.nextUrl.searchParams.get("dsn") === "1") {
+      return NextResponse.json({ dsn });
+    }
     const pool = getPool(dsn);
     const client = await pool.connect();
     try {
@@ -23,16 +26,19 @@ export async function GET(
   }
 }
 
-// PUT /api/connections/[id] — rename
+// PUT /api/connections/[id] — update name and/or DSN
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const { name } = await req.json();
+    if (id === LOCAL_CONNECTION_ID)
+      return NextResponse.json({ error: "The local database connection cannot be edited." }, { status: 403 });
+    const { name, dsn } = await req.json();
     if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
-    await renameConnection(id, name);
+    await updateConnection(id, name, dsn?.trim() || undefined);
+    if (dsn?.trim()) evictDsnCache(id);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -36,6 +36,7 @@ interface Props {
   onZoomToTable?: (table: TableRow) => void;
   onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
   onOpenSettings?: () => void;
+  onEditConnection?: (connId: string) => void;
   onConnectionLost?: () => void;
 }
 
@@ -2041,7 +2042,7 @@ function AttributeFilterEditor({ f, layer, nonGeomCols, drafts, setDrafts, onUpd
 
 // ─── ConnectionBrowserNode ────────────────────────────────────────────────────
 function ConnectionBrowserNode({
-  connId, connName, isActive, layers, onAddLayer, onZoomToTable, onFlyTo, onOpenSettings, onDelete, onSwitchToLayers,
+  connId, connName, isActive, layers, onAddLayer, onZoomToTable, onFlyTo, onOpenSettings, onEditConnection, onDelete, onSwitchToLayers,
 }: {
   connId: string;
   connName: string;
@@ -2051,6 +2052,7 @@ function ConnectionBrowserNode({
   onZoomToTable?: (table: TableRow) => void;
   onFlyTo?: (bounds: [[number, number], [number, number]]) => void;
   onOpenSettings?: () => void;
+  onEditConnection?: (connId: string) => void;
   onDelete?: (connId: string) => void;
   onSwitchToLayers?: () => void;
 }) {
@@ -2527,9 +2529,14 @@ function ConnectionBrowserNode({
                 Refresh
               </button>
               <div className="border-t my-1" />
-              <button className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive" onClick={() => { onDelete?.(connId); setContextMenu(null); }}>
-                Remove connection
+              <button className="w-full text-left px-3 py-1.5 hover:bg-muted" onClick={() => { onEditConnection?.(connId); setContextMenu(null); }}>
+                Edit connection
               </button>
+              {connId !== "local" && (
+                <button className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive" onClick={() => { onDelete?.(connId); setContextMenu(null); }}>
+                  Remove connection
+                </button>
+              )}
             </>
           )}
           {contextMenu.target.type === "schema" && (() => {
@@ -2627,7 +2634,7 @@ function ConnectionBrowserNode({
 export function TableSidebar({
   connectionId, connectionLoaded, connectionsKey, layers,
   onAddLayer, onRemoveLayer, onUpdateLayer, onReorderLayers,
-  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onConnectionLost,
+  activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onEditConnection, onConnectionLost,
 }: Props) {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [tab, setTab] = React.useState("browser");
@@ -2744,6 +2751,7 @@ export function TableSidebar({
               onZoomToTable={onZoomToTable}
               onFlyTo={onFlyTo}
               onOpenSettings={onOpenSettings}
+              onEditConnection={onEditConnection}
               onDelete={async (id) => {
                 await fetch(`/api/connections/${id}`, { method: "DELETE" });
                 setAllConnections((prev) => prev.filter((x) => x.id !== id));
