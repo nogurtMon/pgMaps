@@ -15,7 +15,10 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        - NEXT_PUBLIC_MAPTILER_KEY=${NEXT_PUBLIC_MAPTILER_KEY:-}
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:

@@ -35,10 +35,17 @@
   sudo usermod -aG docker $USER && newgrp docker
   ```
 
-**2. Clone and run**
+**2. Get a MapTiler API key**
+
+Basemaps are served by [MapTiler](https://maptiler.com). Create a free account and copy your API key.
+
+**3. Clone, configure, and run**
 
 ```bash
-git clone https://github.com/nogurtMon/postgis-frontend.git && cd postgis-frontend && docker compose up -d --build
+git clone https://github.com/nogurtMon/postgis-frontend.git
+cd postgis-frontend
+echo "NEXT_PUBLIC_MAPTILER_KEY=your_key_here" > .env
+docker compose up -d --build
 ```
 
 Open `http://localhost:3000`.
@@ -57,6 +64,7 @@ git pull && docker compose down && docker compose up -d --build
 
 | Variable | Required | Description |
 |---|---|---|
+| `NEXT_PUBLIC_MAPTILER_KEY` | Yes | MapTiler API key for basemap tiles. Get a free key at [maptiler.com](https://maptiler.com). |
 | `APP_PASSWORD` | Recommended | Protects the app at `/map` with a password. Without it, anyone who finds the URL can connect databases and read or write your data. Public share links at `/share/[id]` remain accessible regardless. |
 | `PORT` | No | Default: `3000`. |
 | `SHOW_LANDING_PAGE` | No | If set, `/` shows the marketing landing page. Otherwise `/` redirects to `/map`. |
