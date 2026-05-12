@@ -568,7 +568,7 @@ export default function LandingPage() {
         <div className="hero">
           <div className="hero-text">
             <p className="hero-eyebrow">Open source · Self-hosted · MIT license · <span style={{color:'var(--blue-ll)'}}>v0.1.0 public beta</span></p>
-            <h1 className="hero-h1">A web interface for PostGIS</h1>
+            <h1 className="hero-h1">A Web Interface for PostGIS</h1>
             <p className="hero-sub">
               Import spatial data, visualize vector tile layers at any scale, create, edit, and delete
               features, and publish live read-only maps — all from a single self-hosted web app.

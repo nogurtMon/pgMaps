@@ -1,14 +1,24 @@
-# <img src="public/Postgresql_elephant.png" height="32" align="center" />   PostGIS Frontend
+<div align="center">
 
-**The open-source, self-hosted frontend for PostGIS.**
+<img src="public/Postgresql_elephant.png" height="48" />
+
+# PostGIS Frontend
+
+**A web interface for PostGIS power users**
+
+🤖 🛑 Every line in this repo is reviewed by a human
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ![PostGIS Frontend](public/postgis-frontend-demo-gif.gif)
 
-- Connect to any PostGIS database directly from the browser
-- Import anything (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
-- Visualize large spatial datasets with server-side vector tile rendering
+- Connect to multiple PostGIS databases from the browser
+- Streamline imports from common spatial formats (ArcGIS Feature Server, GeoPackage, GeoJSON, KML, SHP, CSV, XLSX)
+- Visualize large spatial datasets with MVT tile serving
 - Create, edit, and delete features with full CRUD support
 - Share live maps with anyone via read-only links
+
+</div>
 
 ---
 
