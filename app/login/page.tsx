@@ -22,7 +22,7 @@ function LoginForm() {
     });
     setLoading(false);
     if (res.ok) {
-      router.push(searchParams.get("from") ?? "/map");
+      router.push(searchParams.get("from") ?? "/maps");
     } else {
       setError("Incorrect password.");
     }

@@ -43,5 +43,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/map/:path*", "/api/:path*"],
+  matcher: ["/map/:path*", "/maps/:path*", "/api/:path*"],
 };

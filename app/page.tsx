@@ -7,7 +7,7 @@ const dmSans = DM_Sans({ subsets: ["latin"], weight: ["300", "400", "500", "600"
 
 
 export default function LandingPage() {
-  if (!process.env.SHOW_LANDING_PAGE) redirect("/map");
+  if (!process.env.SHOW_LANDING_PAGE) redirect("/maps");
 
   return (
     <>
