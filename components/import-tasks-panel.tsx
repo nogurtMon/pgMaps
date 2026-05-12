@@ -25,7 +25,7 @@ async function dropTable(connectionId: string, schema: string, table: string) {
   });
 }
 
-function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh(): void }) {
+function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh?: () => void }) {
   const { cancelTask, resumeTask, removeTask, updateTask } = useImportTasks();
   const pct = task.total > 0 ? Math.round((task.done / task.total) * 100) : null;
   const isActive = task.phase === "importing" || task.phase === "cancelling";
@@ -36,7 +36,7 @@ function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh(): void }) {
   }
 
   function handleKeep() {
-    onRefresh();
+    onRefresh?.();
     removeTask(task.id);
   }
 
@@ -149,18 +149,19 @@ function TaskRow({ task, onRefresh }: { task: ImportTask; onRefresh(): void }) {
   );
 }
 
-export function ImportTasksPanel({ onRefresh }: { onRefresh(): void }) {
+export function ImportTasksPanel({ onRefresh, connectionId }: { onRefresh?: () => void; connectionId?: string }) {
   const { tasks } = useImportTasks();
-  if (tasks.length === 0) return null;
+  const visible = connectionId ? tasks.filter((t) => t.connectionId === connectionId) : tasks;
+  if (visible.length === 0) return null;
 
   return (
     <div className="border-b">
       <div className="px-3 py-1.5 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Imports</span>
-        <span className="text-[10px] text-muted-foreground">{tasks.filter(t => t.phase === "importing" || t.phase === "cancelling").length > 0 ? "Running" : "Done"}</span>
+        <span className="text-[10px] text-muted-foreground">{visible.filter(t => t.phase === "importing" || t.phase === "cancelling").length > 0 ? "Running" : "Done"}</span>
       </div>
       <div className="divide-y">
-        {tasks.map((task) => (
+        {visible.map((task) => (
           <TaskRow key={task.id} task={task} onRefresh={onRefresh} />
         ))}
       </div>

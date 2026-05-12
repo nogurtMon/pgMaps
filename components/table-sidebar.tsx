@@ -2584,8 +2584,6 @@ function ConnectionBrowserNode({
         </div>
       )}
 
-      {/* Import tasks panel — only for the active connection */}
-      {isActive && <ImportTasksPanel onRefresh={() => setRefreshKey((k) => k + 1)} />}
 
       {/* Per-node dialogs */}
       <CreateTableDialog
@@ -2904,6 +2902,9 @@ export function TableSidebar({
           </div>
         );
       })()}
+
+      {/* Import tasks — always at the bottom of the sidebar */}
+      {!sidebarCollapsed && <ImportTasksPanel />}
 
     </aside>
   );
