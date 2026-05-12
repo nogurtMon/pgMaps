@@ -200,6 +200,7 @@ interface Props {
   onViewChange?: (view: MapView) => void;
   hideGeocoder?: boolean;
   hideZoom?: boolean;
+  hideLegend?: boolean;
   onManageTable?: (schema: string, table: string) => void;
   onSelectionChange?: (ctids: string[], layerId: string | null) => void;
   onShowInTable?: (layerId: string, ctid: string) => void;
@@ -574,7 +575,7 @@ function getNeighborPositions(selected: VertexPos, all: VertexPos[], geomType: s
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
-const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideGeocoder, hideZoom, shareControls, editMode = false, onManageTable, onSelectionChange, onShowInTable, onAddEdit, tablePanelOpen }, ref) {
+const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function MaplibreMap({ layers, flyTo, basemap = "", initialView, onViewChange, onUpdateLayer, hideGeocoder, hideZoom, hideLegend, shareControls, editMode = false, onManageTable, onSelectionChange, onShowInTable, onAddEdit, tablePanelOpen }, ref) {
   const mapRef = React.useRef<any>(null);
   const drawRef = React.useRef<MapboxDraw | null>(null);
   const deckCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
