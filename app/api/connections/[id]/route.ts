@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getConnection, renameConnection, deleteConnection } from "@/lib/connections-store";
+import { getConnection, renameConnection, deleteConnection, LOCAL_CONNECTION_ID } from "@/lib/connections-store";
 import { getPool } from "@/lib/pool";
 import { evictDsnCache } from "@/lib/resolve-dsn";
 
@@ -46,6 +46,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    if (id === LOCAL_CONNECTION_ID)
+      return NextResponse.json({ error: "The local database connection cannot be deleted." }, { status: 403 });
     await deleteConnection(id);
     evictDsnCache(id);
     return NextResponse.json({ ok: true });

@@ -37,6 +37,8 @@ function getPool(): Pool {
   return _pool;
 }
 
+export const LOCAL_CONNECTION_ID = "local";
+
 async function ensureTable(): Promise<void> {
   if (_ready) return;
   await getPool().query(`
@@ -49,6 +51,18 @@ async function ensureTable(): Promise<void> {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Always ensure the built-in database is registered as a connection.
+  const storageUrl = getStorageUrl();
+  const { host, database } = parseHostDb(storageUrl);
+  await getPool().query(
+    `INSERT INTO _postgis_frontend_connections (id, name, host, database, encrypted_dsn)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO UPDATE SET
+       host = EXCLUDED.host,
+       database = EXCLUDED.database,
+       encrypted_dsn = EXCLUDED.encrypted_dsn`,
+    [LOCAL_CONNECTION_ID, "Local Database", host, database, encryptDsn(storageUrl)]
+  );
   _ready = true;
 }
 
