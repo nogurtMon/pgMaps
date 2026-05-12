@@ -6,7 +6,7 @@
 
 **Open-source web interface for PostGIS power users**
 
-🤖 AI-generated but quality controlled by a human
+🤖 AI-generated. Human quality control.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
