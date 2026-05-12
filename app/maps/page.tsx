@@ -80,12 +80,12 @@ export default function MapsPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuItem asChild>
-              <a href="/maps" className="flex items-center gap-2">
+              <a href="/map" className="flex items-center gap-2">
                 <HomeIcon className="h-3.5 w-3.5" /> Home
               </a>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/maps" className="flex items-center gap-2">
+              <a href="/map" className="flex items-center gap-2">
                 <FilePlus className="h-3.5 w-3.5" /> New map
               </a>
             </DropdownMenuItem>
@@ -137,7 +137,7 @@ export default function MapsPage() {
             </Button>
             <Button
               size="sm" className="h-7 text-xs gap-1"
-              onClick={() => router.push("/maps")}
+              onClick={() => router.push("/map")}
             >
               <Plus className="h-3 w-3" /> New map
             </Button>
@@ -163,7 +163,7 @@ export default function MapsPage() {
               {showArchived ? "No archived maps." : "No saved maps yet."}
             </p>
             {!showArchived && (
-              <Button size="sm" onClick={() => router.push("/maps")}>
+              <Button size="sm" onClick={() => router.push("/map")}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Create your first map
               </Button>
             )}
