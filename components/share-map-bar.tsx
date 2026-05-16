@@ -1,6 +1,10 @@
 "use client";
 import React from "react";
-import { Eye, EyeOff, Locate, ChevronDown, BookOpen, Layers as LayersIcon, Map as MapIcon, X } from "lucide-react";
+import { Eye, EyeOff, Locate, ChevronDown, ChevronUp, Layers as LayersIcon, Map as MapIcon, X, Table as TableIcon, Loader2, Search, Columns, FileText } from "lucide-react";
+import { marked } from "marked";
+marked.setOptions({ breaks: true });
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import type { MapLayer, LayerControl, TemporalMode } from "@/lib/types";
 import { getBasemapColor, type UserBasemap } from "@/lib/basemaps";
@@ -38,6 +42,18 @@ function geomKind(layer: MapLayer): "point" | "line" | "polygon" {
   return "point";
 }
 
+function PointSwatchShape({ shape, fill }: { shape: string; fill: string }) {
+  switch (shape) {
+    case "square":   return <rect x="2" y="2" width="10" height="10" fill={fill} />;
+    case "triangle": return <polygon points="7,1.5 13,13 1,13" fill={fill} />;
+    case "diamond":  return <polygon points="7,1 13,7 7,13 1,7" fill={fill} />;
+    case "star":     return <polygon points="7,1 8.5,5 13,5 9.5,8 11,12.5 7,10 3,12.5 4.5,8 1,5 5.5,5" fill={fill} />;
+    case "cross":    return <path d="M4.5,1H9.5V4.5H13V9.5H9.5V13H4.5V9.5H1V4.5H4.5Z" fill={fill} />;
+    case "hexagon":  return <polygon points="13,7 10,12.5 4,12.5 1,7 4,1.5 10,1.5" fill={fill} />;
+    default:         return <circle cx="7" cy="7" r="5" fill={fill} />;
+  }
+}
+
 function GeomSwatch({ layer }: { layer: MapLayer }) {
   const kind = geomKind(layer);
   const fillCtrl = (layer.controls ?? []).find(c => c.type === "fill") as Extract<LayerControl, { type: "fill" }> | undefined;
@@ -55,9 +71,10 @@ function GeomSwatch({ layer }: { layer: MapLayer }) {
       <rect x="1" y="1" width="12" height="12" rx="1.5" fill={fill} stroke={stroke} strokeWidth="1.5" />
     </svg>
   );
+  const pointShape = layer.style?.pointShape ?? "circle";
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
-      <circle cx="7" cy="7" r="5" fill={fill} stroke={stroke} strokeWidth="1.5" />
+      <PointSwatchShape shape={pointShape} fill={fill} />
     </svg>
   );
 }
@@ -307,71 +324,49 @@ function ThresholdViewer({ f, onUpdate }: {
   );
 }
 
-// ─── panels ───────────────────────────────────────────────────────────────────
-function LegendPanel({ layers }: { layers: MapLayer[] }) {
-  const visLayers = [...layers].reverse().filter(l => l.table.geom_col);
-  if (visLayers.length === 0) return <p className="text-[11px] text-muted-foreground p-3">No layers.</p>;
+function LineWidthScaleLegend({ ctrl, layer }: {
+  ctrl: Extract<LayerControl, { type: "numeric" }>;
+  layer: MapLayer;
+}) {
+  const { column, dataMin, dataMax, minOutput, maxOutput } = ctrl;
+  const midV = (dataMin + dataMax) / 2;
+  const midW = (minOutput + maxOutput) / 2;
+  const dynamicColor = (layer.controls ?? []).some(
+    c => c.enabled && (c.type === "categorical" || c.type === "threshold") &&
+      (c as Extract<LayerControl, { type: "categorical" }>).target === "stroke"
+  );
+  const strokeCtrl = (layer.controls ?? []).find(c => c.type === "stroke") as Extract<LayerControl, { type: "stroke" }> | undefined;
+  const color = dynamicColor ? null : (strokeCtrl?.color ?? layer.style?.strokeColor ?? layer.style?.color ?? "#3b82f6");
+  const fmt = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2);
   return (
-    <div className="space-y-3 p-3">
-      {visLayers.map(layer => {
-        const catControl = (layer.controls ?? []).find(
-          c => c.type === "categorical" && c.enabled && c.shared
-        ) as Extract<LayerControl, { type: "categorical" }> | undefined;
-        const thrControl = (layer.controls ?? []).find(
-          c => c.type === "threshold" && c.enabled && c.shared
-        ) as Extract<LayerControl, { type: "threshold" }> | undefined;
-        const hasCatFill = catControl && catControl.target === "fill" && catControl.rules.length > 0;
-        return (
-          <div key={layer.id} className={`space-y-1 ${!layer.visible ? "opacity-40" : ""}`}>
-            <div className="flex items-center gap-2">
-              {!hasCatFill && <GeomSwatch layer={layer} />}
-              <span className="text-[11px] font-medium truncate" title={layer.table.table_name}>{toTitleCase(layer.table.table_name)}</span>
+    <div className="mt-0.5">
+      <p className="text-[10px] text-muted-foreground mb-1 capitalize">{column.replace(/_/g, " ")}</p>
+      <div className="space-y-1">
+        {[{ w: minOutput, v: dataMin }, { w: midW, v: midV }, { w: maxOutput, v: dataMax }].map(({ w, v }, i) => {
+          const svgH = Math.max(Math.ceil(w) + 2, 4);
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <svg width="36" height={svgH} viewBox={`0 0 36 ${svgH}`} className="shrink-0 text-foreground/40">
+                <line x1="2" y1={svgH / 2} x2="34" y2={svgH / 2}
+                  stroke={color ?? "currentColor"} strokeWidth={w} strokeLinecap="round" />
+              </svg>
+              <span className="text-[9px] text-muted-foreground tabular-nums">{fmt(v)}</span>
             </div>
-            {catControl && catControl.rules.length > 0 && (
-              <div className="pl-5 space-y-0.5">
-                {catControl.rules.slice(0, 10).map((rule, i) => {
-                  const allHidden = rule.values.length > 0 && rule.values.every(v => catControl.hiddenValues.includes(v));
-                  const label = rule.values.slice(0, 2).join(", ") + (rule.values.length > 2 ? ` +${rule.values.length - 2}` : "");
-                  return (
-                    <div key={i} className={`flex items-center gap-1.5 ${allHidden ? "opacity-40" : ""}`}>
-                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: rule.color }} />
-                      <span className="text-[10px] text-muted-foreground truncate">{label}</span>
-                    </div>
-                  );
-                })}
-                {catControl.rules.length > 10 && (
-                  <span className="text-[9px] text-muted-foreground pl-3.5">+{catControl.rules.length - 10} more</span>
-                )}
-              </div>
-            )}
-            {thrControl && (
-              <div className="pl-5 space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: thrControl.aboveColor }} />
-                  <span className="text-[10px] text-muted-foreground">≥ {thrControl.threshold}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: thrControl.belowColor }} />
-                  <span className="text-[10px] text-muted-foreground">below</span>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
+// ─── panels ───────────────────────────────────────────────────────────────────
 function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
   layers: MapLayer[];
   onUpdateLayerRaw: (id: string, patch: Partial<MapLayer>) => void;
   onToggleVisible: (id: string) => void;
   onFlyTo: (bounds: [[number, number], [number, number]]) => void;
 }) {
-  const [expandedControl, setExpandedControl] = React.useState<string | null>(null);
-  const [collapsedLayers, setCollapsedLayers] = React.useState<Set<string>>(() => new Set());
-
+  const [expandedLayer, setExpandedLayer] = React.useState<string | null>(null);
   const visLayers = [...layers].reverse().filter(l => l.table.geom_col);
 
   function handleControlUpdate(layerId: string, controlId: string, patch: any) {
@@ -398,68 +393,58 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
   return (
     <div className="divide-y">
       {visLayers.map(layer => {
-        const layerControls = (layer.controls ?? []).filter(c => c.shared && c.enabled);
-        const isCollapsed = collapsedLayers.has(layer.id);
+        const sharedControls = (layer.controls ?? []).filter(c => c.shared && c.enabled);
+        const catControl = sharedControls.find(c => c.type === "categorical") as Extract<LayerControl, { type: "categorical" }> | undefined;
+        const thrControl = sharedControls.find(c => c.type === "threshold") as Extract<LayerControl, { type: "threshold" }> | undefined;
+        const lineWidthControl = sharedControls.find(c => c.type === "numeric" && (c as Extract<LayerControl, { type: "numeric" }>).target === "line-width") as Extract<LayerControl, { type: "numeric" }> | undefined;
+        const interactiveControls = sharedControls.filter(c => c.type === "temporal" || (c.type === "numeric" && (c as any).target !== "radius" && (c as any).target !== "line-width"));
+        const hasCatFill = catControl && catControl.target === "fill" && catControl.rules.length > 0;
+        const hasInteractive = interactiveControls.length > 0;
+        const isExpanded = expandedLayer === layer.id;
+
         return (
           <div key={layer.id} className={`transition-opacity ${!layer.visible ? "opacity-40" : ""}`}>
-            <div
-              className={`flex items-center gap-2 px-3 py-2 ${layerControls.length > 0 ? "cursor-pointer hover:bg-muted/40" : ""}`}
-              onClick={() => layerControls.length > 0 && setCollapsedLayers(prev => {
-                const next = new Set(prev);
-                next.has(layer.id) ? next.delete(layer.id) : next.add(layer.id);
-                return next;
-              })}
-            >
+            {/* Header row */}
+            <div className="flex items-center gap-2 px-3 py-2">
+              {!hasCatFill && <GeomSwatch layer={layer} />}
               <span className="text-[11px] font-medium truncate flex-1" title={layer.table.table_name}>{toTitleCase(layer.table.table_name)}</span>
-              <button onClick={e => { e.stopPropagation(); handleZoom(layer); }}
+              <button onClick={() => handleZoom(layer)}
                 className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5" title="Zoom to extent">
                 <Locate className="h-3.5 w-3.5" />
               </button>
-              <button onClick={e => { e.stopPropagation(); onToggleVisible(layer.id); }}
+              <button onClick={() => onToggleVisible(layer.id)}
                 className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5"
                 title={layer.visible ? "Hide layer" : "Show layer"}>
                 {layer.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               </button>
-              {layerControls.length > 0 && (
-                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${isCollapsed ? "" : "rotate-180"}`} />
+              {hasInteractive && (
+                <button onClick={() => setExpandedLayer(isExpanded ? null : layer.id)}
+                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5">
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`} />
+                </button>
               )}
             </div>
 
-            {layerControls.length > 0 && (
-              <div className={`overflow-hidden transition-all duration-200 ease-in-out ${isCollapsed ? "max-h-0" : "max-h-[600px]"}`}>
+            {/* Legend — always visible: categorical, threshold, line-width scale */}
+            {(catControl || thrControl || lineWidthControl) && (
+              <div className="pl-7 pr-3 pb-2 space-y-1">
+                {catControl && <CategoricalViewer f={catControl} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
+                {thrControl && <ThresholdViewer f={thrControl} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
+                {lineWidthControl && <LineWidthScaleLegend ctrl={lineWidthControl} layer={layer} />}
+              </div>
+            )}
+
+            {/* Interactive controls (temporal / numeric) — expandable */}
+            {hasInteractive && (
+              <div className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded ? "max-h-[600px]" : "max-h-0"}`}>
                 <div className="pl-7 pr-3 border-l ml-4 mb-2 divide-y">
-                  {layerControls.map(c => {
-                    const isOpen = expandedControl === c.id;
-                    const isInteractive = c.type !== "attribute";
-                    return (
-                      <div key={c.id}>
-                        <button
-                          onClick={() => isInteractive && setExpandedControl(isOpen ? null : c.id)}
-                          className={`flex items-center justify-between w-full py-1.5 gap-2 ${isInteractive ? "cursor-pointer" : "cursor-default"}`}
-                        >
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-left text-muted-foreground">
-                            {getControlLabel(c)}
-                          </span>
-                          {isInteractive && (
-                            <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`} />
-                          )}
-                          {c.type === "attribute" && (
-                            <span className="text-[9px] text-muted-foreground font-normal normal-case truncate">
-                              {c.operator} {c.value}
-                            </span>
-                          )}
-                        </button>
-                        <div className={`overflow-hidden transition-all duration-150 ease-in-out ${isOpen ? "max-h-[400px]" : "max-h-0"}`}>
-                          <div className="pb-2.5">
-                            {c.type === "temporal" && <TemporalViewer f={c} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
-                            {c.type === "categorical" && <CategoricalViewer f={c} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
-                            {c.type === "threshold" && <ThresholdViewer f={c} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
-                            {c.type === "numeric" && c.target !== "radius" && <NumericViewer f={c} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {interactiveControls.map(c => (
+                    <div key={c.id} className="py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">{getControlLabel(c)}</p>
+                      {c.type === "temporal" && <TemporalViewer f={c} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
+                      {c.type === "numeric" && <NumericViewer f={c} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -484,6 +469,266 @@ function BasemapsPanel({ basemap, onSetBasemap, userBasemaps }: { basemap: strin
   );
 }
 
+// ─── table panel ──────────────────────────────────────────────────────────────
+const TABLE_PAGE_SIZE = 100;
+const TABLE_DEFAULT_HEIGHT = 280;
+const TABLE_MIN_HEIGHT = 120;
+const TABLE_MAX_HEIGHT = 700;
+
+interface ColumnMeta { name: string; dataType: string; isGeom: boolean; }
+
+function TablePanel({ layers, mapBounds, onClose }: { layers: MapLayer[]; mapBounds?: [number, number, number, number]; onClose: () => void }) {
+  const dataLayers = layers.filter(l => l.table.table_name && l.table.table_schema);
+  const [activeLayerId, setActiveLayerId] = React.useState(() => dataLayers[0]?.id ?? "");
+  const activeLayer = dataLayers.find(l => l.id === activeLayerId) ?? dataLayers[0];
+  const schema = activeLayer?.table.table_schema ?? "";
+  const table  = activeLayer?.table.table_name  ?? "";
+
+  const [columns, setColumns]         = React.useState<ColumnMeta[]>([]);
+  const [rows, setRows]               = React.useState<Record<string, any>[]>([]);
+  const [total, setTotal]             = React.useState(0);
+  const [page, setPage]               = React.useState(0);
+  const [sortCol, setSortCol]         = React.useState<string | null>(null);
+  const [sortDir, setSortDir]         = React.useState<"asc" | "desc">("asc");
+  const [search, setSearch]           = React.useState("");
+  const [searchInput, setSearchInput] = React.useState("");
+  const [loading, setLoading]         = React.useState(false);
+  const [error, setError]             = React.useState<string | null>(null);
+  const [visibleOnly, setVisibleOnly] = React.useState(false);
+  const [hiddenCols, setHiddenCols]   = React.useState<Set<string>>(new Set());
+  const [showColPicker, setShowColPicker] = React.useState(false);
+  const [height, setHeight]           = React.useState(TABLE_DEFAULT_HEIGHT);
+  const dragRef    = React.useRef<{ startY: number; startH: number } | null>(null);
+  const colPickerRef = React.useRef<HTMLDivElement>(null);
+
+  async function fetchRows(opts: { p?: number; sc?: string | null; sd?: "asc" | "desc"; s?: string; vo?: boolean } = {}) {
+    if (!schema || !table || !activeLayer) return;
+    const p  = opts.p  ?? page;
+    const sc = "sc" in opts ? opts.sc : sortCol;
+    const sd = opts.sd ?? sortDir;
+    const s  = "s"  in opts ? opts.s  : search;
+    const vo = "vo" in opts ? opts.vo : visibleOnly;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/pg/table-rows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shareId: activeLayer.shareId,
+          schema, table,
+          page: p, pageSize: TABLE_PAGE_SIZE,
+          sortCol: sc, sortDir: sd,
+          search: s,
+          bbox: vo ? mapBounds : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setColumns(data.columns); setRows(data.rows); setTotal(data.total);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Reset + fetch when layer changes
+  const prevKey = React.useRef("");
+  React.useEffect(() => {
+    if (!schema || !table) return;
+    const key = `${schema}.${table}`;
+    if (key === prevKey.current) return;
+    prevKey.current = key;
+    setPage(0); setSortCol(null); setSortDir("asc"); setSearch(""); setSearchInput("");
+    setVisibleOnly(false); setHiddenCols(new Set());
+    fetchRows({ p: 0, sc: null, sd: "asc", s: "", vo: false });
+  }, [schema, table]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const prevBoundsRef = React.useRef<string>("");
+  React.useEffect(() => {
+    const key = JSON.stringify(mapBounds);
+    if (!visibleOnly || key === prevBoundsRef.current) return;
+    prevBoundsRef.current = key;
+    fetchRows({ p: 0 });
+  }, [mapBounds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleSort(col: string) {
+    let nc: string | null = col, nd: "asc" | "desc" = "asc";
+    if (sortCol === col) { if (sortDir === "asc") nd = "desc"; else nc = null; }
+    setSortCol(nc); setSortDir(nd); setPage(0); fetchRows({ p: 0, sc: nc, sd: nd });
+  }
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const s = searchInput.trim(); setSearch(s); setPage(0); fetchRows({ p: 0, s });
+  }
+  function clearSearch() { setSearchInput(""); setSearch(""); setPage(0); fetchRows({ p: 0, s: "" }); }
+  function handlePageChange(np: number) { setPage(np); fetchRows({ p: np }); }
+
+  function onDragMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: height };
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY;
+      setHeight(Math.min(TABLE_MAX_HEIGHT, Math.max(TABLE_MIN_HEIGHT, dragRef.current.startH + delta)));
+    }
+    function onUp() {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  if (dataLayers.length === 0) return null;
+
+  const pageCount = Math.ceil(total / TABLE_PAGE_SIZE);
+  const rowStart  = page * TABLE_PAGE_SIZE + 1;
+  const rowEnd    = Math.min((page + 1) * TABLE_PAGE_SIZE, total);
+  const displayCols = columns.filter(c => !hiddenCols.has(c.name));
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-30 bg-background border-t shadow-2xl flex flex-col" style={{ height }}>
+      {/* Drag handle */}
+      <div
+        onMouseDown={onDragMouseDown}
+        className="h-1.5 w-full shrink-0 cursor-row-resize flex items-center justify-center group hover:bg-primary/10 transition-colors"
+        title="Drag to resize"
+      >
+        <div className="w-8 h-0.5 rounded-full bg-border group-hover:bg-primary/40 transition-colors" />
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex justify-between items-center border-b shrink-0 bg-muted/20 px-2 gap-2">
+        <div className="flex-1 min-w-0 max-w-64">
+          <select
+            value={activeLayerId}
+            onChange={e => setActiveLayerId(e.target.value)}
+            className="h-6 text-xs bg-transparent border rounded px-1.5 w-full max-w-[220px] text-foreground"
+          >
+            {dataLayers.map(l => (
+              <option key={l.id} value={l.id}>{l.table.table_schema}.{l.table.table_name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* All / Visible toggle */}
+        <div className="flex rounded border h-6 overflow-hidden text-[11px] shrink-0">
+          <button
+            className={`px-2 transition-colors ${!visibleOnly ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => { setVisibleOnly(false); setPage(0); fetchRows({ p: 0, vo: false }); }}
+          >All</button>
+          <button
+            className={`px-2 border-l transition-colors ${visibleOnly ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => { setVisibleOnly(true); setPage(0); fetchRows({ p: 0, vo: true }); }}
+          >Visible</button>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <form onSubmit={handleSearch} className="flex gap-1">
+            <Input placeholder="Search…" value={searchInput} onChange={e => setSearchInput(e.target.value)} className="h-6 text-xs w-36" />
+            <Button type="submit" size="sm" variant="ghost" className="h-6 w-6 p-0"><Search className="h-3 w-3" /></Button>
+            {search && <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={clearSearch}><X className="h-3 w-3" /></Button>}
+          </form>
+          <div className="relative">
+            <Button size="sm" variant={hiddenCols.size > 0 ? "secondary" : "ghost"} className="h-6 text-xs gap-1 px-2"
+              onClick={() => setShowColPicker(v => !v)}>
+              <Columns className="h-3 w-3" />
+            </Button>
+            {showColPicker && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowColPicker(false)} />
+                <div ref={colPickerRef}
+                  className="absolute right-0 bottom-full mb-1 z-20 bg-background border rounded-md shadow-lg py-1 min-w-40 max-h-60 overflow-y-auto">
+                  <div className="px-2 py-1 flex items-center justify-between border-b mb-1">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Columns</span>
+                    {hiddenCols.size > 0 && <button className="text-[10px] text-primary hover:underline" onClick={() => setHiddenCols(new Set())}>Show all</button>}
+                  </div>
+                  {columns.map(col => (
+                    <label key={col.name} className="flex items-center gap-2 px-2 py-1 hover:bg-muted/50 cursor-pointer text-xs">
+                      <input type="checkbox" className="h-3 w-3 shrink-0" checked={!hiddenCols.has(col.name)}
+                        onChange={() => setHiddenCols(prev => { const n = new Set(prev); n.has(col.name) ? n.delete(col.name) : n.add(col.name); return n; })} />
+                      <span className="truncate">{col.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <button onClick={onClose} className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        {loading && <div className="flex items-center justify-center h-full gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>}
+        {error && <p className="p-3 text-xs text-destructive">{error}</p>}
+        {!loading && !error && (
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0 bg-background z-10 border-b shadow-sm">
+              <tr>
+                {displayCols.map(col => (
+                  <th key={col.name}
+                    className={`px-2 py-1.5 text-left border-r last:border-r-0 whitespace-nowrap ${!col.isGeom ? "cursor-pointer select-none hover:bg-muted/60" : ""}`}
+                    onClick={() => !col.isGeom && handleSort(col.name)}>
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-foreground">{col.name}</span>
+                      {sortCol === col.name && (sortDir === "asc" ? <ChevronUp className="h-3 w-3 text-primary shrink-0" /> : <ChevronDown className="h-3 w-3 text-primary shrink-0" />)}
+                    </div>
+                    <div className="text-[9px] font-normal font-sans text-muted-foreground/70">{col.dataType}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={row._ctid ?? ri}
+                  className={`border-b hover:bg-muted/40 transition-colors ${ri % 2 === 0 ? "" : "bg-muted/20"}`}>
+                  {displayCols.map(col => {
+                    const val = row[col.name];
+                    return (
+                      <td key={col.name}
+                        className="px-2 py-1 border-r last:border-r-0 max-w-[14rem] overflow-hidden"
+                        title={val == null ? "NULL" : String(val)}>
+                        {val == null
+                          ? <span className="text-muted-foreground/40 italic select-none">null</span>
+                          : col.isGeom
+                            ? <span className="text-muted-foreground text-[10px] truncate block">{String(val).slice(0, 40)}…</span>
+                            : <span className="truncate block">{String(val)}</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={Math.max(displayCols.length, 1)} className="text-center py-8 text-muted-foreground text-xs">
+                  {search ? "No rows match the search." : "This table has no rows."}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 border-t px-3 py-1 flex items-center justify-between text-xs text-muted-foreground bg-background">
+        <span>
+          {total === 0 ? "No rows" : `${rowStart.toLocaleString()}–${rowEnd.toLocaleString()} of ${total.toLocaleString()} rows`}
+          {search && <span className="ml-1 text-primary">(filtered)</span>}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" disabled={page === 0 || loading} onClick={() => handlePageChange(page - 1)}>Previous</Button>
+          <span>Page {page + 1} of {Math.max(1, pageCount)}</span>
+          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" disabled={page >= pageCount - 1 || loading} onClick={() => handlePageChange(page + 1)}>Next</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── bar button ───────────────────────────────────────────────────────────────
 function BarButton({ icon, label, active, onClick }: {
   icon: React.ReactNode; label: string; active: boolean; onClick: () => void;
@@ -497,12 +742,14 @@ function BarButton({ icon, label, active, onClick }: {
 }
 
 // ─── main export ──────────────────────────────────────────────────────────────
-type ActivePanel = "legend" | "layers" | "basemaps" | null;
+type ActivePanel = "layers" | "basemaps" | "table" | "notes" | null;
 
 interface ShareMapBarProps {
   mapName?: string;
   layers: MapLayer[];
   basemap: string;
+  markdown?: string;
+  mapBounds?: [number, number, number, number];
   onSetBasemap: (b: string) => void;
   onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
   onToggleVisible: (id: string) => void;
@@ -510,7 +757,7 @@ interface ShareMapBarProps {
 }
 
 export function ShareMapBar({
-  mapName, layers, basemap, onSetBasemap, onUpdateLayer, onToggleVisible, onFlyTo,
+  mapName, layers, basemap, markdown, mapBounds, onSetBasemap, onUpdateLayer, onToggleVisible, onFlyTo,
 }: ShareMapBarProps) {
   const [activePanel, setActivePanel] = React.useState<ActivePanel>(null);
   const barRef = React.useRef<HTMLDivElement>(null);
@@ -524,7 +771,10 @@ export function ShareMapBar({
   }
 
   const hasLayers = layers.some(l => l.table.geom_col);
-  const hasControls = layers.some(l => (l.controls ?? []).some(c => c.shared && c.enabled));
+  const notesHtml = React.useMemo(
+    () => markdown ? marked.parse(markdown) as string : "",
+    [markdown]
+  );
 
   return (
     <div ref={barRef} className="absolute top-0 left-0 right-0 z-20">
@@ -544,15 +794,15 @@ export function ShareMapBar({
         <div className="flex-1" />
 
         {/* Right: panel buttons */}
-        {hasLayers && (
+        {markdown && (
           <BarButton
-            icon={<BookOpen className="h-4 w-4" />}
-            label="Legend"
-            active={activePanel === "legend"}
-            onClick={() => togglePanel("legend")}
+            icon={<FileText className="h-4 w-4" />}
+            label="Notes"
+            active={activePanel === "notes"}
+            onClick={() => togglePanel("notes")}
           />
         )}
-        {(hasLayers || hasControls) && (
+        {hasLayers && (
           <BarButton
             icon={<LayersIcon className="h-4 w-4" />}
             label="Layers"
@@ -566,20 +816,31 @@ export function ShareMapBar({
           active={activePanel === "basemaps"}
           onClick={() => togglePanel("basemaps")}
         />
+        <BarButton
+          icon={<TableIcon className="h-4 w-4" />}
+          label="Table"
+          active={activePanel === "table"}
+          onClick={() => togglePanel("table")}
+        />
       </div>
 
-      {/* Active panel */}
-      {activePanel && (
+      {/* Active floating panel (legend / layers / basemaps / notes) */}
+      {activePanel && activePanel !== "table" && (
         <div className="absolute top-full right-3 mt-1 w-[min(320px,calc(100vw-24px))] bg-background border rounded-lg shadow-xl overflow-hidden" style={{ maxHeight: "min(70dvh, 480px)", overflowY: "auto" }}>
           <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b bg-muted/30 shrink-0">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {activePanel === "legend" ? "Legend" : activePanel === "layers" ? "Layers" : "Basemaps"}
+              {activePanel === "layers" ? "Layers" : activePanel === "basemaps" ? "Basemaps" : "Description"}
             </span>
             <button onClick={() => setActivePanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          {activePanel === "legend" && <LegendPanel layers={layers} />}
+          {activePanel === "notes" && (
+            <div
+              className="px-4 py-3 prose prose-sm dark:prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ __html: notesHtml }}
+            />
+          )}
           {activePanel === "layers" && (
             <LayersPanel
               layers={layers}
@@ -590,6 +851,11 @@ export function ShareMapBar({
           )}
           {activePanel === "basemaps" && <BasemapsPanel basemap={basemap} onSetBasemap={onSetBasemap} userBasemaps={userBasemaps} />}
         </div>
+      )}
+
+      {/* Table panel — fixed bottom sheet */}
+      {activePanel === "table" && (
+        <TablePanel layers={layers} mapBounds={mapBounds} onClose={() => setActivePanel(null)} />
       )}
     </div>
   );

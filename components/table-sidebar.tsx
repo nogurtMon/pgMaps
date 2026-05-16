@@ -236,18 +236,32 @@ function TemporalHistogram({ snapPoints, snapCounts, activeFrom, activeTo, mode 
   );
 }
 
-function GeomTypeIcon({ gt, color }: { gt: string; color: string }) {
-  const isPoint = gt.includes("point");
+function PointShapePath({ shape, color }: { shape: string; color: string }) {
+  switch (shape) {
+    case "square":   return <rect x="3" y="3" width="10" height="10" fill={color} />;
+    case "triangle": return <polygon points="8,2 14,14 2,14" fill={color} />;
+    case "diamond":  return <polygon points="8,1.5 14.5,8 8,14.5 1.5,8" fill={color} />;
+    case "star":     return <polygon points="8,1.5 9.5,5.5 14,5.5 10.5,8.5 12,13 8,10.5 4,13 5.5,8.5 2,5.5 6.5,5.5" fill={color} />;
+    case "cross":    return <path d="M5.5,2H10.5V5.5H14V10.5H10.5V14H5.5V10.5H2V5.5H5.5Z" fill={color} />;
+    case "hexagon":  return <polygon points="14,8 11,13.5 5,13.5 2,8 5,2.5 11,2.5" fill={color} />;
+    default:         return (
+      <>
+        <circle cx="4"   cy="11" r="2.5" fill={color} />
+        <circle cx="12"  cy="4"  r="2"   fill={color} opacity="0.65" />
+        <circle cx="9"   cy="10" r="1.5" fill={color} opacity="0.4" />
+      </>
+    );
+  }
+}
+
+function GeomTypeIcon({ gt, color, pointShape }: { gt: string; color: string; pointShape?: string }) {
   const isLine  = gt.includes("line");
+  const isPoint = !isLine && !gt.includes("polygon");
   return (
     <div className="w-7 h-7 rounded-md bg-foreground/8 flex items-center justify-center shrink-0 border border-foreground/8">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         {isPoint ? (
-          <>
-            <circle cx="4"   cy="11" r="2.5" fill={color} />
-            <circle cx="12"  cy="4"  r="2"   fill={color} opacity="0.65" />
-            <circle cx="9"   cy="10" r="1.5" fill={color} opacity="0.4" />
-          </>
+          <PointShapePath shape={pointShape ?? "circle"} color={color} />
         ) : isLine ? (
           <path d="M1.5 13.5 L5.5 7 L9.5 10 L14.5 2.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         ) : (
@@ -1923,6 +1937,40 @@ function LayerFilterEditor({
           );
         })()}
 
+        {/* Shape section — points only */}
+        {isPoint && (() => {
+          const SHAPES: { id: string; label: string; svg: React.ReactNode }[] = [
+            { id: "circle",   label: "Circle",   svg: <circle cx="8" cy="8" r="6.5" /> },
+            { id: "square",   label: "Square",   svg: <rect x="1.5" y="1.5" width="13" height="13" rx="1" /> },
+            { id: "triangle", label: "Triangle", svg: <polygon points="8,1.5 14.5,14.5 1.5,14.5" /> },
+            { id: "diamond",  label: "Diamond",  svg: <polygon points="8,1 15,8 8,15 1,8" /> },
+            { id: "star",     label: "Star",     svg: <polygon points="8,1 10,6 15,6 11,9 12.5,14.5 8,11.5 3.5,14.5 5,9 1,6 6,6" /> },
+            { id: "cross",    label: "Cross",    svg: <path d="M5.5,1.5H10.5V5.5H14.5V10.5H10.5V14.5H5.5V10.5H1.5V5.5H5.5Z" /> },
+            { id: "hexagon",  label: "Hexagon",  svg: <polygon points="14.5,8 11.25,13.8 4.75,13.8 1.5,8 4.75,2.2 11.25,2.2" /> },
+          ];
+          const currentShape = layer.style.pointShape ?? "circle";
+          const fillColor = layer.style.color ?? "#3b82f6";
+          return (
+            <div className="px-2.5 py-2 space-y-2">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Shape</p>
+              <div className="flex flex-wrap gap-1.5">
+                {SHAPES.map(s => (
+                  <button
+                    key={s.id}
+                    title={s.label}
+                    onClick={() => onUpdateLayer(layer.id, { style: { ...layer.style, pointShape: s.id } })}
+                    className={`flex items-center justify-center w-8 h-8 rounded border transition-colors ${currentShape === s.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill={fillColor}>
+                      {s.svg}
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Radius section — points only, collapsible card */}
         {isPoint && (() => {
           const radByValCtrl = (layer.controls ?? []).find(c => c.type === "numeric" && (c as any).target === "radius") as Extract<LayerControl, { type: "numeric" }> | undefined;
@@ -1959,9 +2007,7 @@ function LayerFilterEditor({
       </>)}
 
       {activeTab === "filter" && (<>
-        {filterControls.length === 0 && !deploying && (
-          <p className="text-[11px] text-muted-foreground text-center py-2">No filters applied</p>
-        )}
+
         {filterControls.map(f => renderControlCard(f))}
         {renderAddButton(FILTER_OPTIONS)}
       </>)}
@@ -2304,7 +2350,7 @@ function ConnectionBrowserNode({
                   return (
                     <div key={key} className={`border-b ${alreadyAdded ? "bg-primary/5" : ""}`}>
                       <div
-                        className="group flex items-center gap-1.5 pl-11 pr-2 py-1.5 cursor-default select-none hover:bg-muted/40 min-w-0"
+                        className="group flex items-center gap-1.5 pl-11 pr-2 py-1.5 cursor-default select-none hover:bg-muted/40 min-w-0 overflow-hidden"
                         onDoubleClick={() => { if (!alreadyAdded) { onAddLayer(t, connId); onSwitchToLayers?.(); } }}
                         onContextMenu={(e) => {
                           e.preventDefault();
@@ -2729,7 +2775,8 @@ export function TableSidebar({
 
       {/* BROWSER TAB */}
       {!sidebarCollapsed && tab === "browser" && (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 w-full [&>[data-radix-scroll-area-viewport]>div]:!block">
+          <div className="w-full min-w-0">
           {connectionsLoaded && allConnections.length === 0 && (
             <div className="mx-3 mt-6 mb-2 flex flex-col items-center gap-3 text-center">
               <p className="text-xs text-muted-foreground">No saved connections. Add a PostGIS database to get started.</p>
@@ -2765,6 +2812,7 @@ export function TableSidebar({
               </Button>
             </div>
           )}
+          </div>
         </ScrollArea>
       )}
 
@@ -2823,7 +2871,7 @@ export function TableSidebar({
                     className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 cursor-grab"
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <GeomTypeIcon gt={gt} color={layerColor} />
+                  <GeomTypeIcon gt={gt} color={layerColor} pointShape={layer.style.pointShape} />
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <p className="text-xs font-medium truncate leading-tight" title={layer.table.table_name}>{layer.table.table_name}</p>
                   </div>

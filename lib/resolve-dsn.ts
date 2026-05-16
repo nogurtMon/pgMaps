@@ -2,17 +2,27 @@ import { decryptDsn } from "./dsn-token";
 import { getConnection } from "./connections-store";
 import { getShare } from "./share-store";
 
-const dsnCache = new Map<string, string>();
+interface CacheEntry { dsn: string; ts: number }
+// 60-second TTL: stale entries from deleted/updated connections self-heal within one minute.
+const DSN_TTL_MS = 60_000;
+const dsnCache = new Map<string, CacheEntry>();
 
-/** Resolve a named connection by its server-side ID. Result is cached in-process. */
+/** Resolve a named connection by its server-side ID. Result is cached with a 60s TTL. */
 export async function resolveConnectionDsn(connectionId: string): Promise<string> {
-  if (dsnCache.has(connectionId)) return dsnCache.get(connectionId)!;
-  const dsn = await getConnection(connectionId);
-  dsnCache.set(connectionId, dsn);
-  return dsn;
+  const cached = dsnCache.get(connectionId);
+  if (cached && Date.now() - cached.ts < DSN_TTL_MS) return cached.dsn;
+  try {
+    const dsn = await getConnection(connectionId);
+    dsnCache.set(connectionId, { dsn, ts: Date.now() });
+    return dsn;
+  } catch (e) {
+    // If storage is temporarily unreachable, fall back to stale cache rather than erroring.
+    if (cached) return cached.dsn;
+    throw e;
+  }
 }
 
-/** Remove a connection's DSN from the in-process cache. Call on connection delete. */
+/** Remove a connection's DSN from the in-process cache. Call on connection update/delete. */
 export function evictDsnCache(connectionId: string): void {
   dsnCache.delete(connectionId);
 }

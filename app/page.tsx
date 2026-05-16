@@ -72,15 +72,20 @@ export default function LandingPage() {
           position: sticky;
           top: 0;
           z-index: 100;
+          background: var(--nav-bg);
+          backdrop-filter: blur(10px);
+          transition: background 0.2s, border-color 0.2s;
+        }
+
+        .nav-inner {
+          max-width: 860px;
+          margin: 0 auto;
           height: 52px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           padding: 0 32px;
-          background: var(--nav-bg);
-          backdrop-filter: blur(10px);
           border-bottom: 1px solid var(--border);
-          transition: background 0.2s, border-color 0.2s;
         }
 
         .nav-logo {
@@ -164,15 +169,15 @@ export default function LandingPage() {
         /* ── HERO ── */
         .hero {
           padding: 80px 32px 0;
-          max-width: 1100px;
+          max-width: 860px;
           margin: 0 auto;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 64px;
+          display: flex;
+          flex-direction: column;
           align-items: center;
+          text-align: center;
         }
 
-        .hero-text { padding-bottom: 80px; }
+        .hero-text { padding-bottom: 52px; }
 
         .hero-eyebrow {
           font-size: 12px;
@@ -183,7 +188,7 @@ export default function LandingPage() {
         }
 
         .hero-h1 {
-          font-size: clamp(28px, 3.5vw, 44px);
+          font-size: clamp(28px, 3.5vw, 48px);
           font-weight: 600;
           color: var(--bright);
           letter-spacing: -0.025em;
@@ -196,11 +201,11 @@ export default function LandingPage() {
           color: var(--body);
           font-weight: 400;
           line-height: 1.75;
-          max-width: 420px;
-          margin-bottom: 36px;
+          max-width: 480px;
+          margin: 0 auto 36px;
         }
 
-        .hero-ctas { display: flex; gap: 10px; flex-wrap: wrap; }
+        .hero-ctas { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
         .btn-primary {
           display: inline-flex;
@@ -233,7 +238,7 @@ export default function LandingPage() {
         .btn-secondary:hover { border-color: var(--muted); color: var(--bright); }
 
         /* ── APP SCREENSHOT ── */
-        .hero-screen { position: relative; padding-bottom: 80px; }
+        .hero-screen { position: relative; padding-bottom: 80px; width: 100%; }
 
         .screen-wrap {
           border-radius: 8px;
@@ -320,10 +325,10 @@ export default function LandingPage() {
         }
 
         /* ── DIVIDER ── */
-        .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+        .divider { border: none; border-top: 1px solid var(--border); max-width: 860px; margin: 0 auto; display: block; }
 
         /* ── SECTIONS ── */
-        .section { max-width: 1100px; margin: 0 auto; padding: 72px 32px; }
+        .section { max-width: 860px; margin: 0 auto; padding: 72px 32px; }
         .section-header { margin-bottom: 48px; }
 
         .section-tag {
@@ -405,12 +410,57 @@ export default function LandingPage() {
           background: var(--bg);
         }
 
+        /* ── GEOMETRIES ── */
+        .geom-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
+          margin-top: 40px;
+        }
+
+        .geom-card {
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          padding: 20px 16px;
+          background: var(--surface);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          transition: border-color 0.15s, background 0.15s;
+        }
+
+        .geom-card:hover { border-color: var(--border2); background: var(--raised); }
+
+.geom-icon {
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--blue-l);
+        }
+
+        .geom-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--bright);
+          text-align: center;
+          letter-spacing: -0.01em;
+        }
+
+@media (max-width: 820px) {
+          .geom-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
         /* ── DEPLOY / CTA ── */
         .deploy-card {
           background: var(--surface);
           border: 1px solid var(--blue);
           border-radius: 7px;
           padding: 24px 22px;
+          max-width: 520px;
+          margin: 0 auto;
         }
 
         .deploy-card h3 {
@@ -453,12 +503,11 @@ export default function LandingPage() {
         .deploy-link:hover { color: var(--blue-ll); }
 
         .cta-section {
-          border-top: 1px solid var(--border);
           padding: 80px 32px;
           text-align: center;
         }
 
-        .cta-inner { max-width: 520px; margin: 0 auto; }
+        .cta-inner { max-width: 860px; margin: 0 auto; }
 
         .cta-h2 {
           font-size: clamp(22px, 2.5vw, 30px);
@@ -479,7 +528,8 @@ export default function LandingPage() {
 
         /* ── FOOTER ── */
         .footer {
-          border-top: 1px solid var(--border);
+          max-width: 860px;
+          margin: 0 auto;
           padding: 20px 32px;
           display: flex;
           align-items: center;
@@ -505,10 +555,10 @@ export default function LandingPage() {
 
         /* ── RESPONSIVE ── */
         @media (max-width: 820px) {
-          .nav { padding: 0 20px; }
+          .nav-inner { padding: 0 20px; }
           .nav-links { display: none; }
-          .hero { grid-template-columns: 1fr; gap: 40px; padding: 52px 20px 0; }
-          .hero-text { padding-bottom: 0; }
+          .hero { padding: 52px 20px 0; }
+          .hero-text { padding-bottom: 36px; }
           .hero-screen { padding-bottom: 52px; }
           .hero-sub { max-width: none; }
           .features-grid { grid-template-columns: 1fr; }
@@ -517,6 +567,8 @@ export default function LandingPage() {
           .feature:last-child { border-bottom: none; }
           .footer { flex-direction: column; gap: 12px; text-align: center; }
           .section { padding: 52px 20px; }
+          .cta-section { padding: 52px 20px; }
+          .footer { padding: 20px; }
         }
       `}</style>
 
@@ -540,6 +592,7 @@ export default function LandingPage() {
 
         {/* NAV */}
         <nav className="nav">
+          <div className="nav-inner">
           <a href="/" className="nav-logo">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/Postgresql_elephant.png" alt="PostGIS" />
@@ -552,7 +605,6 @@ export default function LandingPage() {
           </ul>
 
           <div style={{display:'flex', alignItems:'center', gap:8}}>
-            <span className="nav-version">v0.1.0 beta</span>
             <button id="theme-btn" className="theme-toggle" aria-label="Toggle light/dark mode">
               <span className="icon-moon"><MoonIcon /></span>
               <span className="icon-sun"><SunIcon /></span>
@@ -562,15 +614,15 @@ export default function LandingPage() {
               GitHub
             </a>
           </div>
+          </div>
         </nav>
 
         {/* HERO */}
         <div className="hero">
           <div className="hero-text">
-            <p className="hero-eyebrow">Open source · Self-hosted · MIT license · <span style={{color:'var(--blue-ll)'}}>v0.1.0 public beta</span></p>
-            <h1 className="hero-h1">A Web Interface for PostGIS</h1>
+            <h1 className="hero-h1">PostGIS Frontend</h1>
             <p className="hero-sub">
-              Create, read, update, delete and share — at scale, all from a self-hosted web app that deploys in minutes.
+              Web interface for PostgreSQL/PostGIS databases
             </p>
             <div className="hero-ctas">
               <a href="#deploy" className="btn-primary">
@@ -580,81 +632,6 @@ export default function LandingPage() {
                 <GithubIcon />
                 View on GitHub
               </a>
-            </div>
-          </div>
-
-          <div className="hero-screen">
-            <div className="screen-wrap">
-              <div className="screen-bar">
-                <div className="screen-dots">
-                  <div className="dot dot-r" />
-                  <div className="dot dot-y" />
-                  <div className="dot dot-g" />
-                </div>
-                <div className="screen-addr">localhost:3000/map</div>
-              </div>
-              <div className="screen-canvas">
-                <svg viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style={{width:'100%',height:'100%'}}>
-                  <rect width="520" height="340" fill="#071018"/>
-                  {/* Base road grid */}
-                  <g stroke="#0e1e2e" strokeWidth="0.5">
-                    <line x1="0" y1="68" x2="520" y2="68"/>
-                    <line x1="0" y1="136" x2="520" y2="136"/>
-                    <line x1="0" y1="204" x2="520" y2="204"/>
-                    <line x1="0" y1="272" x2="520" y2="272"/>
-                    <line x1="104" y1="0" x2="104" y2="340"/>
-                    <line x1="208" y1="0" x2="208" y2="340"/>
-                    <line x1="312" y1="0" x2="312" y2="340"/>
-                    <line x1="416" y1="0" x2="416" y2="340"/>
-                  </g>
-                  {/* Land mass */}
-                  <path d="M20,30 C50,20 110,28 155,44 C200,60 225,82 255,75 C295,65 335,78 365,96 C390,112 382,138 400,148 C420,158 452,142 475,152 C500,163 515,178 508,198 C496,224 472,228 460,250 C446,274 458,302 446,320 C434,336 412,340 392,330 C360,316 332,298 302,307 C272,316 248,332 218,326 C188,320 168,302 148,292 C122,278 98,287 74,276 C50,264 28,246 20,220 C8,192 12,165 4,140 C-8,108 -4,72 12,50 Z" fill="#0c1e30" stroke="#152a40" strokeWidth="0.8"/>
-                  {/* Second land */}
-                  <path d="M360,20 C390,12 430,26 464,40 C498,54 520,68 520,68 L520,160 C504,165 480,155 456,160 C430,166 412,182 388,186 C362,190 340,175 316,180 C298,184 286,198 266,193 C250,188 240,172 244,152 C248,132 268,122 272,102 C276,82 258,56 276,36 Z" fill="#0c1e30" stroke="#152a40" strokeWidth="0.8"/>
-                  {/* Roads */}
-                  <path d="M30,148 C80,140 140,148 190,138 C240,128 280,112 330,118 C370,122 398,138 430,132" fill="none" stroke="#1e3854" strokeWidth="1.5"/>
-                  <path d="M280,200 C310,196 345,208 385,198 C415,190 448,175 480,180" fill="none" stroke="#1e3854" strokeWidth="1.5"/>
-                  {/* Parcels / polygons - layer A */}
-                  <polygon points="95,222 132,208 156,222 148,252 108,256" fill="rgba(51,103,145,0.22)" stroke="#336791" strokeWidth="0.8"/>
-                  <polygon points="218,238 258,222 280,238 270,270 230,274" fill="rgba(51,103,145,0.18)" stroke="#336791" strokeWidth="0.8"/>
-                  <polygon points="355,215 392,200 415,215 404,246 362,250" fill="rgba(51,103,145,0.22)" stroke="#336791" strokeWidth="0.8"/>
-                  {/* Points - layer B */}
-                  <circle cx="72" cy="136" r="3.5" fill="#6db3e6" opacity="0.9"/>
-                  <circle cx="72" cy="136" r="8" fill="rgba(109,179,230,0.1)" stroke="rgba(109,179,230,0.3)" strokeWidth="0.8"/>
-                  <circle cx="186" cy="108" r="3.5" fill="#6db3e6" opacity="0.9"/>
-                  <circle cx="186" cy="108" r="8" fill="rgba(109,179,230,0.1)" stroke="rgba(109,179,230,0.3)" strokeWidth="0.8"/>
-                  <circle cx="298" cy="120" r="3.5" fill="#6db3e6" opacity="0.9"/>
-                  <circle cx="298" cy="120" r="8" fill="rgba(109,179,230,0.1)" stroke="rgba(109,179,230,0.3)" strokeWidth="0.8"/>
-                  <circle cx="420" cy="112" r="3.5" fill="#6db3e6" opacity="0.9"/>
-                  <circle cx="420" cy="112" r="8" fill="rgba(109,179,230,0.1)" stroke="rgba(109,179,230,0.3)" strokeWidth="0.8"/>
-                  {/* Scale bar */}
-                  <rect x="430" y="320" width="64" height="1.5" fill="#253545"/>
-                  <rect x="430" y="316" width="1" height="10" fill="#253545"/>
-                  <rect x="494" y="316" width="1" height="10" fill="#253545"/>
-                  <text x="462" y="313" fontFamily="monospace" fontSize="8" fill="#4a6a84" textAnchor="middle">50 km</text>
-                </svg>
-
-                <div className="map-panel">
-                  <div className="panel-label">Layers</div>
-                  <div className="layer-row">
-                    <div className="layer-swatch" style={{background:'#6db3e6'}} />
-                    <span className="layer-name">monitoring_sites</span>
-                  </div>
-                  <div className="layer-row">
-                    <div className="layer-swatch" style={{background:'#336791', borderRadius:'2px'}} />
-                    <span className="layer-name">parcels</span>
-                  </div>
-                  <div className="layer-row">
-                    <div className="layer-swatch" style={{background:'#4a90c4', borderRadius:'2px'}} />
-                    <span className="layer-name">watersheds</span>
-                  </div>
-                </div>
-
-                <div className="map-badge">
-                  <ShareIcon />
-                  Shared · read-only
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -667,7 +644,7 @@ export default function LandingPage() {
             <p className="section-tag">Features</p>
             <h2 className="section-h2">Built for PostGIS power users</h2>
             <p className="section-sub">
-              Import, render, style, query, create, edit, delete, and share spatial data — all from one interface.
+              Create, read, update, delete and share — at scale
             </p>
           </div>
 
@@ -711,11 +688,13 @@ export default function LandingPage() {
         </section>
 
         {/* DEPLOY + CTA */}
+        <hr className="divider" />
         <div className="cta-section" id="deploy">
           <div className="cta-inner">
+            <p className="section-tag" style={{marginBottom: 12}}>Deploy</p>
             <h2 className="cta-h2">Self-host with Docker</h2>
             <p className="cta-sub">
-              Open source and self-hosted. Your data stays on your infrastructure.
+              Open source and self-hosted
             </p>
             <div className="deploy-card featured" style={{textAlign:'left', marginBottom: 24}}>
               <p style={{fontSize:13, color:'var(--body)', fontWeight:300, lineHeight:1.6, marginBottom:0}}>
@@ -726,21 +705,15 @@ export default function LandingPage() {
                 Setup guide ↗
               </a>
             </div>
-            <div className="cta-btns">
-              <a href="https://github.com/nogurtMon/postgis-frontend" target="_blank" rel="noopener noreferrer" className="btn-primary">
-                <GithubIcon />
-                View on GitHub
-              </a>
-            </div>
           </div>
         </div>
 
         {/* FOOTER */}
+        <hr className="divider" />
         <footer className="footer">
-          <span className="footer-left">PostGIS Frontend · MIT License · Built with Next.js, MapLibre GL, deck.gl</span>
+          <span className="footer-left">MIT license</span>
           <div className="footer-links">
             <a href="https://github.com/nogurtMon/postgis-frontend" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="https://www.postgis-frontend.com/share/81abbce7-c8db-4bad-ad0a-5905dc307da3" target="_blank" rel="noopener noreferrer">Demo</a>
           </div>
         </footer>
 
@@ -854,3 +827,4 @@ function DbIcon() {
     </svg>
   );
 }
+

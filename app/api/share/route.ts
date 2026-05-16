@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { layers, basemap, name, view, password, expiresAt } = await req.json();
+    const { layers, basemap, name, view, password, expiresAt, markdown } = await req.json();
     if (!Array.isArray(layers) || layers.length === 0)
       return NextResponse.json({ error: "No layers to share" }, { status: 400 });
 
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       basemap: basemap ?? "liberty",
       name: displayName,
       view: view ?? undefined,
+      markdown: markdown || undefined,
       createdAt: now,
       updatedAt: now,
     };

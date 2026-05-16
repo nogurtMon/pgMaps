@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   let dsn: string;
   try {
-    dsn = await resolveDsnFromRequest({ connectionId, shareId, dsn: legacyDsn });
+    dsn = await resolveDsnFromRequest({ connectionId, shareId, dsn: legacyDsn, schema, table });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Invalid connection" }, { status: 400 });
   }
@@ -71,7 +71,7 @@ export async function PUT(req: NextRequest) {
 
   let dsn: string;
   try {
-    dsn = await resolveDsnFromRequest({ connectionId, shareId });
+    dsn = await resolveDsnFromRequest({ connectionId, shareId, schema, table });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Invalid connection" }, { status: 400 });
   }
@@ -113,7 +113,7 @@ export async function DELETE(req: NextRequest) {
 
   let dsn: string;
   try {
-    dsn = await resolveDsnFromRequest({ connectionId, shareId });
+    dsn = await resolveDsnFromRequest({ connectionId, shareId, schema, table });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Invalid connection" }, { status: 400 });
   }
@@ -143,7 +143,7 @@ export async function PATCH(req: NextRequest) {
 
   let dsn: string;
   try {
-    dsn = await resolveDsnFromRequest({ connectionId, shareId });
+    dsn = await resolveDsnFromRequest({ connectionId, shareId, schema, table });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Invalid connection" }, { status: 400 });
   }

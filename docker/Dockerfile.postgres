@@ -1,0 +1,17 @@
+# Stage 1: compile h3-pg against PostgreSQL 16
+FROM postgis/postgis:16-3.5 AS h3-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git postgresql-server-dev-16 \
+  && git clone --depth 1 --branch v4.1.3 \
+      https://github.com/zachasme/h3-pg.git /h3-pg \
+  && cd /h3-pg && git submodule update --init \
+  && make && make install
+
+# Stage 2: clean image — PostGIS + H3
+FROM postgis/postgis:16-3.5
+
+COPY --from=h3-builder /usr/lib/postgresql/16/lib/h3*.so \
+                        /usr/lib/postgresql/16/lib/
+COPY --from=h3-builder /usr/share/postgresql/16/extension/h3* \
+                        /usr/share/postgresql/16/extension/

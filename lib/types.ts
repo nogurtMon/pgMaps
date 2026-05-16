@@ -104,6 +104,7 @@ export interface LayerStyle {
   lineWidth: number;     // px, stroke width
   radiusScale: RadiusScale | null;
   lineWidthScale: ValueScale | null;
+  pointShape?: string;   // "circle" | "square" | "triangle" | "diamond" | "star" | "cross" | "hexagon"
 }
 
 export interface MapLayer {

@@ -31,6 +31,7 @@ interface Props {
   basemap: string;
   view?: MapView;
   mapName?: string | null;
+  markdown?: string;
   activeViewId?: string | null;
   shareId: string | null;
   onShareIdChange: (id: string | null) => void;
@@ -45,7 +46,7 @@ function embedCode(id: string) {
   return `<iframe src="${url}" width="100%" height="500" style="border:none;border-radius:8px;" allowfullscreen></iframe>`;
 }
 
-export function ShareDialog({ open, onOpenChange, layers, basemap, view, mapName, activeViewId, shareId, onShareIdChange }: Props) {
+export function ShareDialog({ open, onOpenChange, layers, basemap, view, mapName, markdown, activeViewId, shareId, onShareIdChange }: Props) {
   const [phase, setPhase] = React.useState<"idle" | "saving" | "done" | "error">("idle");
   const [visibility, setVisibility] = React.useState<Visibility>("public");
   const [password, setPassword] = React.useState("");
@@ -76,6 +77,7 @@ export function ShareDialog({ open, onOpenChange, layers, basemap, view, mapName
       view: view ? { longitude: view.longitude, latitude: view.latitude, zoom: view.zoom } : undefined,
       name: mapName ?? "Untitled Map",
       password: visibility === "password" ? password : undefined,
+      markdown: markdown || undefined,
     };
   }
 

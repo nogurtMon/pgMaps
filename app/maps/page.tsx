@@ -45,7 +45,11 @@ export default function MapsPage() {
     setError(null);
     try {
       const res = await fetch(`/api/pg/saved-views?connectionId=${encodeURIComponent(connectionId)}&archived=${showArchived}`);
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch {
+        throw new Error(`Server error (${res.status}): ${text.slice(0, 300)}`);
+      }
       if (!res.ok) throw new Error(data.error ?? "Failed to load maps");
       setViews(data.views ?? []);
     } catch (e: any) {

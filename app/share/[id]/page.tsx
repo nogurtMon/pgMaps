@@ -20,8 +20,10 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
   React.useEffect(() => {
     fetch("/api/basemaps").then(r => r.ok ? r.json() : []).then(setUserBasemaps).catch(() => {});
   }, []);
+  const [markdown, setMarkdown] = React.useState("");
   const [initialView, setInitialView] = React.useState<{ longitude: number; latitude: number; zoom: number } | undefined>(undefined);
   const [flyTo, setFlyTo] = React.useState<ZoomTarget | null>(null);
+  const [mapBounds, setMapBounds] = React.useState<[number, number, number, number] | undefined>(undefined);
   const [status, setStatus] = React.useState<"loading" | "requires_password" | "expired" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = React.useState("");
   const [passwordInput, setPasswordInput] = React.useState("");
@@ -40,6 +42,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
   function applyConfig(config: any) {
     setBasemap(config.basemap ?? "liberty");
+    setMarkdown(config.markdown ?? "");
     setMapName(config.name);
     if (config.view) setInitialView(config.view);
     const loaded: MapLayer[] = (config.layers ?? []).map((l: any) => ({
@@ -169,12 +172,15 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
           hideLegend
           hideZoom
           shareControls
+          onViewChange={(v) => setMapBounds(v?.bounds)}
         />
 
         <ShareMapBar
           mapName={mapName}
           layers={layers}
           basemap={basemap}
+          markdown={markdown}
+          mapBounds={mapBounds}
           onSetBasemap={setBasemap}
           onUpdateLayer={updateLayer}
           onToggleVisible={(layerId) => updateLayer(layerId, { visible: !layers.find(l => l.id === layerId)?.visible })}

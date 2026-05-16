@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Pool } from "pg";
 import { getPool } from "@/lib/pool";
-import { resolveDsnFromRequest } from "@/lib/resolve-dsn";
+import { resolveDsnFromRequest, evictDsnCache } from "@/lib/resolve-dsn";
 import { getCachedTile, setCachedTile } from "@/lib/tile-cache";
 
 
@@ -30,7 +30,7 @@ async function getNonGeomCols(pool: Pool, schema: string, table: string, geomCol
     throw e;
   }
   const cols = rows.map((r: any) => r.column_name as string).filter((c) => c !== geomCol);
-  colCache.set(cacheKey, cols);
+  if (cols.length > 0) colCache.set(cacheKey, cols);
   return cols;
 }
 
@@ -65,6 +65,9 @@ export async function GET(
   }
   if (!schema || !table)
     return NextResponse.json({ error: "Missing schema or table" }, { status: 400 });
+
+  let dsnHost = "?";
+  try { dsnHost = new URL(dsn).host; } catch {}
 
   const z = parseInt(zs, 10);
   const x = parseInt(xs, 10);
@@ -237,15 +240,25 @@ export async function GET(
       }
     }
 
+    const connectionId = searchParams.get("connectionId");
+
     let rows: any[];
     try {
       rows = await runQuery(buildSql(propCols), queryParams);
     } catch (qe: any) {
-      // Stale column cache — evict and retry once with fresh schema
-      if (/column .* does not exist/i.test(qe.message ?? "")) {
+      const shouldRetry =
+        /column .* does not exist/i.test(qe.message ?? "") ||
+        qe.code === "42P01"; // relation not found — bad connection may be routed to wrong DB
+      if (shouldRetry) {
         colCache.delete(cacheKey);
         propCols = await getNonGeomCols(pool, schema, table, geomCol, cacheKey);
-        rows = await runQuery(buildSql(propCols), queryParams);
+        try {
+          rows = await runQuery(buildSql(propCols), queryParams);
+        } catch (retryErr: any) {
+          // Retry also failed — evict DSN cache so next request re-resolves fresh
+          if (retryErr.code === "42P01" && connectionId) evictDsnCache(connectionId);
+          throw retryErr;
+        }
       } else {
         throw qe;
       }
@@ -271,10 +284,10 @@ export async function GET(
     // The map keeps working; the error is logged server-side for debugging.
     // Non-pg errors (missing params, bad DSN) are caught earlier and already return 4xx.
     if (code) {
-      console.error("[tiles pg-err]", { schema, table, z, x, y, code, error: msg });
+      console.error("[tiles pg-err]", { db: dsnHost, schema, table, z, x, y, code, error: msg });
       return new NextResponse(null, { status: 204 });
     }
-    console.error("[tiles 500]", { schema, table, z, x, y, geomCol, srid, error: msg, detail: e.detail });
+    console.error("[tiles 500]", { db: dsnHost, schema, table, z, x, y, geomCol, srid, error: msg, detail: e.detail });
     return NextResponse.json({ error: msg || "unknown error" }, { status: 500 });
   }
 }

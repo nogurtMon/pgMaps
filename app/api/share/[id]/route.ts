@@ -57,7 +57,7 @@ export async function PUT(
     const { id } = await params;
     if (!safeId(id)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
-    const { layers, basemap, name, view, password, expiresAt } = await req.json();
+    const { layers, basemap, name, view, password, expiresAt, markdown } = await req.json();
     if (!Array.isArray(layers) || layers.length === 0)
       return NextResponse.json({ error: "No layers provided" }, { status: 400 });
 
@@ -85,6 +85,7 @@ export async function PUT(
       basemap: basemap ?? "liberty",
       name: displayName,
       view: view ?? existing?.view,
+      markdown: markdown !== undefined ? (markdown || undefined) : existing?.markdown,
       ...(isNew ? { createdAt: now } : {}),
       updatedAt: now,
     };

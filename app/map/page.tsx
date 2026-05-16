@@ -11,11 +11,12 @@ import type { ZoomTarget, MapView, MaplibreMapHandle } from "@/components/maplib
 
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Bug, Lightbulb, ChevronDown, ArrowLeft, Share2, Pencil, Eye, Sun, Moon, SheetIcon, Home as HomeIcon, FilePlus, Undo2 } from "lucide-react";
+import { Bug, Lightbulb, ChevronDown, ArrowLeft, Share2, Pencil, Eye, Sun, Moon, SheetIcon, Home as HomeIcon, FilePlus, Undo2, FileText, X } from "lucide-react";
 import { AttributeTablePanel } from "@/components/attribute-table-panel";
 import { ShareDialog } from "@/components/share-dialog";
 import { TableInfoDialog } from "@/components/table-info-dialog";
 import { BasemapManagerDialog } from "@/components/basemap-manager-dialog";
+import { MarkdownPanel } from "@/components/markdown-panel";
 import { DEFAULT_BASEMAP, getBasemapColor, getBasemapLabel, type UserBasemap } from "@/lib/basemaps";
 import { ImportTasksProvider } from "@/lib/import-tasks-context";
 import { Toaster } from "@/components/toaster";
@@ -84,6 +85,8 @@ export default function Home() {
     // Delay so the layer-change fetchRows in the panel completes before navigateToCtid fires.
     setTimeout(() => setActivateGoTo(n => n + 1), 350);
   }
+  const [markdown, setMarkdown] = React.useState("");
+  const [notesOpen, setNotesOpen] = React.useState(false);
   const [editHistory, setEditHistory] = React.useState<UndoableOp[]>([]);
   const [undoing, setUndoing] = React.useState(false);
 
@@ -154,13 +157,14 @@ export default function Home() {
           (v.state_json.layers ?? []).map((l: any) => ({
             ...l,
             id: crypto.randomUUID(),
-            connectionId: l.connectionId,
+            connectionId: l.connectionId ?? v.connection_id,
             dataVersion: 0,
             controls: migrateLayerControls(l),
             filters: undefined,
           }))
         );
         setBasemap(v.state_json.basemap ?? "liberty");
+        if (v.state_json.markdown) setMarkdown(v.state_json.markdown);
         if (v.state_json.view) {
           setZoomTarget({ center: [v.state_json.view.longitude, v.state_json.view.latitude], zoom: v.state_json.view.zoom });
         }
@@ -194,6 +198,7 @@ export default function Home() {
     return {
       layers,
       basemap,
+      markdown: markdown || undefined,
       view: v ? { longitude: v.longitude, latitude: v.latitude, zoom: v.zoom } : undefined,
     };
   }
@@ -438,6 +443,15 @@ export default function Home() {
           >
             <SheetIcon className="h-4 w-4" />
           </Button>
+          <Button
+            size="sm" variant={notesOpen ? "default" : "outline"}
+            className="h-7 px-2 text-xs gap-1.5"
+            title="Write a description for this map"
+            onClick={() => setNotesOpen(v => !v)}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Description
+          </Button>
           {/* Editing / Viewing dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -523,6 +537,14 @@ export default function Home() {
             />
           )}
         </div>
+        {notesOpen && (
+          <MarkdownPanel
+            value={markdown}
+            onChange={setMarkdown}
+            onClose={() => setNotesOpen(false)}
+            readOnly={viewMode === "viewing"}
+          />
+        )}
       </div>
 
       <BasemapManagerDialog
@@ -544,6 +566,7 @@ export default function Home() {
         basemap={basemap}
         view={mapView}
         mapName={activeViewName}
+        markdown={markdown}
         activeViewId={activeViewId}
         shareId={shareId}
         onShareIdChange={setShareId}

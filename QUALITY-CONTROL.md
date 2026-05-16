@@ -4,6 +4,9 @@ Check each item before tagging a release. Each item should be verified manually 
 
 ---
 
+## Test files
+- [ ] **Host files in an S3 bucket**
+
 ## Geometry Types
 
 - [ ] **Points** — import, render, style, click, edit, delete

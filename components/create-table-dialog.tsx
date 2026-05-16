@@ -793,7 +793,7 @@ async function runArcImportLoop(p: ArcImportLoopParams) {
 export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated, defaultSchema }: Props) {
   const { addTask, updateTask, registerCancel, registerResume } = useImportTasks();
   const currentTaskIdRef = React.useRef<string | null>(null);
-  const [activeTab, setActiveTab] = React.useState("scratch");
+  const [activeTab, setActiveTab] = React.useState("file");
 
   // ── From scratch state ────────────────────────────────────────────────────
   const [scratchSchema, setScratchSchema] = React.useState(defaultSchema ?? "public");
@@ -828,7 +828,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
   const [fileError, setFileError] = React.useState("");
 
   function reset() {
-    setActiveTab("scratch");
+    setActiveTab("file");
     setScratchSchema(defaultSchema ?? "public"); setScratchTable(""); setScratchGeomType("Point");
     setScratchSrid("4326"); setScratchCols([]); setScratchPhase("idle"); setScratchError("");
     setArcUrl(""); setArcPhase("idle"); setArcMeta(null); setArcColMappings([]);
@@ -1224,15 +1224,15 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
         <DialogHeader>
           <DialogTitle>Create Table</DialogTitle>
           <DialogDescription>
-            Create an empty table, or import from an ArcGIS Feature Server or a local file.
+            Create an empty table, or import from a file or ArcGIS Feature Server.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2 flex flex-col flex-1 min-h-0">
           <TabsList className="w-full">
-            <TabsTrigger value="scratch" className="flex-1 text-xs">From scratch</TabsTrigger>
-            <TabsTrigger value="arcgis" className="flex-1 text-xs">From ArcGIS</TabsTrigger>
             <TabsTrigger value="file" className="flex-1 text-xs">From File</TabsTrigger>
+            <TabsTrigger value="arcgis" className="flex-1 text-xs">From ArcGIS</TabsTrigger>
+            <TabsTrigger value="scratch" className="flex-1 text-xs">From Scratch</TabsTrigger>
           </TabsList>
 
           {/* ── From scratch tab ── */}
@@ -1518,6 +1518,7 @@ export function CreateTableDialog({ open, onOpenChange, connectionId, onCreated,
               </div>
             </div>
           </TabsContent>
+
         </Tabs>
       </DialogContent>
     </Dialog>

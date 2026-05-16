@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     goToCtid,
   } = await req.json();
   let dsn: string;
-  try { dsn = await resolveDsnFromRequest({ connectionId, shareId, dsn: legacyDsn }); }
+  try { dsn = await resolveDsnFromRequest({ connectionId, shareId, dsn: legacyDsn, schema, table }); }
   catch (e: any) { return NextResponse.json({ error: e.message ?? "Invalid token" }, { status: 400 }); }
   if (!VALID_IDENT.test(schema) || !VALID_IDENT.test(table))
     return NextResponse.json({ error: "Invalid schema or table" }, { status: 400 });

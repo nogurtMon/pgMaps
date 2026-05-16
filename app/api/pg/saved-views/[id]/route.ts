@@ -22,7 +22,7 @@ export async function GET(
   const { id } = await params;
   try {
     const { rows } = await getPool().query(
-      `SELECT id, name, state_json, is_public, archived, created_at, updated_at
+      `SELECT id, connection_id, name, state_json, is_public, archived, created_at, updated_at
        FROM _postgis_frontend_maps WHERE id = $1`,
       [id]
     );

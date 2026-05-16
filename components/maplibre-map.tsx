@@ -127,6 +127,22 @@ function geomAnchor(geom: any): [number, number] | null {
   return null;
 }
 
+// ─── point shape icon builder ─────────────────────────────────────────────────
+function buildShapeIcon(shape: string) {
+  let content = "";
+  switch (shape) {
+    case "square":   content = `<rect x="4" y="4" width="56" height="56" fill="white"/>`; break;
+    case "triangle": content = `<polygon points="32,3 61,61 3,61" fill="white"/>`; break;
+    case "diamond":  content = `<polygon points="32,2 62,32 32,62 2,32" fill="white"/>`; break;
+    case "star":     content = `<polygon points="32,4 39,23 59,23 43,35 49,55 32,43 15,55 21,35 5,23 25,23" fill="white"/>`; break;
+    case "cross":    content = `<path d="M22,4H42V22H60V42H42V60H22V42H4V22H22Z" fill="white"/>`; break;
+    case "hexagon":  content = `<polygon points="60,32 46,56 18,56 4,32 18,8 46,8" fill="white"/>`; break;
+    default:         content = `<circle cx="32" cy="32" r="28" fill="white"/>`; break;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${content}</svg>`;
+  return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 64, height: 64, anchorX: 32, anchorY: 32, mask: true };
+}
+
 // ─── basemap definitions ──────────────────────────────────────────────────────
 import { resolveBasemapUrl, BLANK_STYLE, type UserBasemap } from "@/lib/basemaps";
 
@@ -584,6 +600,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
   // (MapboxDraw does NOT fire events for programmatic draw.delete/draw.add calls)
   const computeVertsRef = React.useRef<(() => void) | null>(null);
   const overlay = React.useMemo(() => new MapboxOverlay({ interleaved: false }), []);
+  const [mapLoaded, setMapLoaded] = React.useState(false);
 
   // Refs so the deckLayers useMemo onClick closure can read current edit state
   // without being re-evaluated every time those states change.
@@ -1640,6 +1657,25 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
       const staticFill: [number,number,number,number]   = [...fillRgb,   fillAlpha];
       const staticStroke: [number,number,number,number] = [...strokeRgb, strokeAlpha];
 
+      const geomType = (layer.geomTypeOverride ?? layer.table.geom_type ?? "").toLowerCase();
+      const pointShape = layer.style.pointShape ?? "circle";
+      const useIconShape = geomType.includes("point") && pointShape !== "circle";
+      const iconDescriptor = useIconShape ? buildShapeIcon(pointShape) : null;
+
+      const fillColorFn: any = threshFill
+        ? (d: any) => {
+            const v = Number(d.properties?.[threshFill!.column] ?? 0);
+            return resolveThreshColor(threshFill!, v, fillAlpha);
+          }
+        : catFill
+        ? (d: any) => {
+            const rule = catFill!.rules.find(r => r.values.includes(String(d.properties?.[catFill!.column] ?? "")));
+            return [...hexToRgb(rule ? rule.color : catFill!.defaultColor), fillAlpha] as [number,number,number,number];
+          }
+        : numOpacity
+        ? (d: any) => [...fillRgb, Math.round(lerp(Number(d.properties?.[numOpacity!.column] ?? 0), numOpacity!.min, numOpacity!.max, numOpacity!.minOutput, numOpacity!.maxOutput) * 255)] as [number,number,number,number]
+        : staticFill;
+
       return new MVTLayer({
         id: `layer-${layer.id}-v${layer.dataVersion ?? 0}`,
         data: buildTileUrl(layer),
@@ -1648,7 +1684,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
         refinementStrategy: "no-overlap",
         pickable: true,
         autoHighlight: true,
-        pointType: "circle",
+        pointType: useIconShape ? "icon" : "circle",
         pointRadiusUnits: "pixels",
         lineWidthUnits: "pixels",
 
@@ -1656,19 +1692,15 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
           ? (d: any) => lerp(Number(d.properties?.[radCtrl!.column] ?? 0), radCtrl!.min, radCtrl!.max, radCtrl!.minOutput, radCtrl!.maxOutput)
           : layer.style.radius,
 
-        getFillColor: threshFill
-          ? (d: any) => {
-              const v = Number(d.properties?.[threshFill!.column] ?? 0);
-              return resolveThreshColor(threshFill!, v, fillAlpha);
-            }
-          : catFill
-          ? (d: any) => {
-              const rule = catFill!.rules.find(r => r.values.includes(String(d.properties?.[catFill!.column] ?? "")));
-              return [...hexToRgb(rule ? rule.color : catFill!.defaultColor), fillAlpha] as [number,number,number,number];
-            }
-          : numOpacity
-          ? (d: any) => [...fillRgb, Math.round(lerp(Number(d.properties?.[numOpacity!.column] ?? 0), numOpacity!.min, numOpacity!.max, numOpacity!.minOutput, numOpacity!.maxOutput) * 255)] as [number,number,number,number]
-          : staticFill,
+        // Icon-shape props (used when pointType: "icon")
+        getIcon: iconDescriptor ? (() => iconDescriptor) : undefined,
+        getIconSize: radCtrl
+          ? (d: any) => lerp(Number(d.properties?.[radCtrl!.column] ?? 0), radCtrl!.min, radCtrl!.max, radCtrl!.minOutput, radCtrl!.maxOutput) * 2
+          : (layer.style.radius ?? 6) * 2,
+        iconSizeUnits: "pixels" as const,
+        getIconColor: fillColorFn,
+
+        getFillColor: fillColorFn,
 
         getLineColor: threshStroke
           ? (d: any) => {
@@ -1690,7 +1722,10 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
 
         updateTriggers: {
           getPointRadius:  [layer.controls, layer.style.radius],
+          getIconSize:     [layer.controls, layer.style.radius],
+          getIcon:         [pointShape],
           getFillColor:    [layer.controls, layer.style.color, layer.style.opacity],
+          getIconColor:    [layer.controls, layer.style.color, layer.style.opacity],
           getLineColor:    [layer.controls, layer.style.strokeColor, layer.style.strokeOpacity],
           getLineWidth:    [layer.controls, layer.style.lineWidth],
         },
@@ -1716,21 +1751,41 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
   [layers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── mount overlay + draw control on map load ────────────────────────────
-  const onLoad = React.useCallback(() => {
-    const map = mapRef.current?.getMap();
+  // NOTE: with reuseMaps, react-maplibre fires onLoad synchronously (map.fire('load'))
+  // before mapRef.current is set via useImperativeHandle. We get the map from event.target
+  // instead, which is always the live MapLibre instance regardless of ref timing.
+  // Guards prevent double-setup when the same map instance is reused across mounts.
+  const onLoad = React.useCallback((evt?: any) => {
+    const map = (evt?.target) ?? mapRef.current?.getMap();
     if (!map) return;
-    map.addControl(overlay);
-    deckCanvasRef.current = (overlay as any).getCanvas?.() ?? null;
-    const draw = new MapboxDraw({ displayControlsDefault: false, controls: {}, styles: DRAW_STYLES as any });
-    map.addControl(draw as any);
-    drawRef.current = draw;
-    map.on("draw.modechange", (e: any) => setMapboxDrawMode(e.mode ?? ""));
+
+    if (!map.hasControl(overlay)) {
+      map.addControl(overlay);
+      deckCanvasRef.current = (overlay as any).getCanvas?.() ?? null;
+    }
+    setMapLoaded(true);
+
+    if (!drawRef.current) {
+      const draw = new MapboxDraw({ displayControlsDefault: false, controls: {}, styles: DRAW_STYLES as any });
+      map.addControl(draw as any);
+      drawRef.current = draw;
+      map.on("draw.modechange", (e: any) => setMapboxDrawMode(e.mode ?? ""));
+    }
 
     // MapLibre-native highlight source — visible even when deck.gl canvas is hidden
-    map.addSource("_sel", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({ id: "_sel-fill",   type: "fill",   source: "_sel", filter: ["==", "$type", "Polygon"],    paint: { "fill-color": "#fbbf24", "fill-opacity": 0.18 } });
-    map.addLayer({ id: "_sel-line",   type: "line",   source: "_sel",                                        paint: { "line-color": "#fbbf24", "line-width": 2.5, "line-opacity": 0.9 } });
-    map.addLayer({ id: "_sel-circle", type: "circle", source: "_sel", filter: ["==", "$type", "Point"],      paint: { "circle-radius": 10, "circle-color": "#fbbf24", "circle-opacity": 0.5, "circle-stroke-color": "#fbbf24", "circle-stroke-width": 2.5 } });
+    if (!map.getSource("_sel")) {
+      map.addSource("_sel", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({ id: "_sel-fill",   type: "fill",   source: "_sel", filter: ["==", "$type", "Polygon"],    paint: { "fill-color": "#fbbf24", "fill-opacity": 0.18 } });
+      map.addLayer({ id: "_sel-line",   type: "line",   source: "_sel",                                        paint: { "line-color": "#fbbf24", "line-width": 2.5, "line-opacity": 0.9 } });
+      map.addLayer({ id: "_sel-circle", type: "circle", source: "_sel", filter: ["==", "$type", "Point"],      paint: { "circle-radius": 10, "circle-color": "#fbbf24", "circle-opacity": 0.5, "circle-stroke-color": "#fbbf24", "circle-stroke-width": 2.5 } });
+    }
+  }, [overlay]);
+
+  // ─── remove overlay from reused map when this component unmounts ──────────
+  React.useEffect(() => {
+    return () => {
+      try { mapRef.current?.getMap()?.removeControl(overlay); } catch {}
+    };
   }, [overlay]);
 
   // ─── keep MapLibre highlight source in sync (visible even during draw mode) ─
@@ -1772,7 +1827,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
         if (canvas) canvas.style.cursor = info.object ? "pointer" : "";
       },
     });
-  }, [overlay, deckLayers, selectionItems, selectionIdx, geomEditState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlay, deckLayers, selectionItems, selectionIdx, geomEditState, mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── render ───────────────────────────────────────────────────────────────
   return (
