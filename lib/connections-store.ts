@@ -51,6 +51,7 @@ async function ensureTable(): Promise<void> {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await getPool().query(`CREATE EXTENSION IF NOT EXISTS postgis`).catch(() => {});
 
   // Always ensure the built-in database is registered as a connection.
   const storageUrl = getStorageUrl();
