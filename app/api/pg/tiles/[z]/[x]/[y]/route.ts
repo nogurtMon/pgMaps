@@ -190,9 +190,13 @@ export async function GET(
     const schemaQ = qi(schema!);
     const tableQ  = qi(table!);
     const geomQ   = qi(geomCol);
-    const tolerance = z <= 4 ? 10000 : z <= 6 ? 2000 : 0;
+    // Tile-relative tolerance: 2 tile-pixels of precision at this zoom.
+    // 40075016m = full Web Mercator width; dividing by 2^z gives tile width in meters.
+    // Only pre-simplify below z=8 — above that ST_AsMVTGeom's grid quantization suffices.
+    // ST_Simplify (Douglas-Peucker) is used over ST_SimplifyPreserveTopology for speed.
+    const tolerance = z < 8 ? (40075016 / Math.pow(2, z) / 4096) * 2 : 0;
     const geomExpr = tolerance > 0
-      ? `ST_SimplifyPreserveTopology(ST_Transform(${geomQ}, 3857), ${tolerance})`
+      ? `ST_Simplify(ST_Transform(${geomQ}, 3857), ${tolerance})`
       : `ST_Transform(${geomQ}, 3857)`;
     function buildSql(cols: string[]) {
       const propColSet = new Set(cols);

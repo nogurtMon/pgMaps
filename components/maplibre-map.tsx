@@ -7,6 +7,7 @@ import { MVTLayer } from "@deck.gl/geo-layers";
 import { GeoJsonLayer } from "@deck.gl/layers";
 import { GeocoderControl } from "@/components/geocoder-control";
 import type { MapLayer, LayerControl, UndoableOp } from "@/lib/types";
+import { findIcon } from "@/lib/point-icons";
 import { Plus, Minus, Navigation, Home, Copy, Check, X, ChevronLeft, ChevronRight, Pencil, Settings2, PenLine, GripHorizontal, SquarePen, Trash2, Sheet } from "lucide-react";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
@@ -77,6 +78,7 @@ function buildTileUrl(layer: MapLayer): string {
     if (!c.enabled) continue;
     if ((c.type === "categorical" || c.type === "threshold") && c.column) styleCols.add(c.column);
     if (c.type === "numeric" && c.target !== "filter" && c.column) styleCols.add(c.column);
+    if (c.type === "shape-categorical" && c.column) styleCols.add(c.column);
   }
   if (styleCols.size > 0) params.set("sc", [...styleCols].join(","));
 
@@ -128,19 +130,10 @@ function geomAnchor(geom: any): [number, number] | null {
 }
 
 // ─── point shape icon builder ─────────────────────────────────────────────────
-function buildShapeIcon(shape: string) {
-  let content = "";
-  switch (shape) {
-    case "square":   content = `<rect x="4" y="4" width="56" height="56" fill="white"/>`; break;
-    case "triangle": content = `<polygon points="32,3 61,61 3,61" fill="white"/>`; break;
-    case "diamond":  content = `<polygon points="32,2 62,32 32,62 2,32" fill="white"/>`; break;
-    case "star":     content = `<polygon points="32,4 39,23 59,23 43,35 49,55 32,43 15,55 21,35 5,23 25,23" fill="white"/>`; break;
-    case "cross":    content = `<path d="M22,4H42V22H60V42H42V60H22V42H4V22H22Z" fill="white"/>`; break;
-    case "hexagon":  content = `<polygon points="60,32 46,56 18,56 4,32 18,8 46,8" fill="white"/>`; break;
-    default:         content = `<circle cx="32" cy="32" r="28" fill="white"/>`; break;
-  }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${content}</svg>`;
-  return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 64, height: 64, anchorX: 32, anchorY: 32, mask: true };
+function buildShapeIcon(shape: string, fillHex: string) {
+  const icon = findIcon(shape);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${icon.svg(fillHex)}</svg>`;
+  return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 64, height: 64, anchorX: 32, anchorY: 32, mask: false };
 }
 
 // ─── basemap definitions ──────────────────────────────────────────────────────
@@ -1659,8 +1652,46 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
 
       const geomType = (layer.geomTypeOverride ?? layer.table.geom_type ?? "").toLowerCase();
       const pointShape = layer.style.pointShape ?? "circle";
-      const useIconShape = geomType.includes("point") && pointShape !== "circle";
-      const iconDescriptor = useIconShape ? buildShapeIcon(pointShape) : null;
+      const shapeCatCtrl = (layer.controls ?? []).find(c => c.type === "shape-categorical" && c.enabled) as Extract<typeof layer.controls[number], { type: "shape-categorical" }> | undefined;
+      const useIconShape = geomType.includes("point") && (pointShape !== "circle" || !!shapeCatCtrl);
+
+      // Memoized icon cache per layer render to avoid building new data URIs per feature
+      const _iconCache: Record<string, ReturnType<typeof buildShapeIcon>> = {};
+      function getShapeIcon(shape: string, fillHex: string) {
+        const key = `${shape}|${fillHex}`;
+        if (!_iconCache[key]) _iconCache[key] = buildShapeIcon(shape, fillHex);
+        return _iconCache[key];
+      }
+
+      // Returns the fill hex for a feature, used to bake color into the icon SVG
+      const staticFillHex = fillCtrl?.color ?? layer.style.color;
+      function getFillHexForFeature(d: any): string {
+        if (catFill) {
+          const rule = catFill.rules.find(r => r.values.includes(String(d.properties?.[catFill!.column] ?? "")));
+          return rule ? rule.color : catFill.defaultColor;
+        }
+        if (threshFill) {
+          const v = Number(d.properties?.[threshFill!.column] ?? 0);
+          if (threshFill.ranges && threshFill.ranges.length > 0) {
+            for (const r of threshFill.ranges) {
+              if (v >= (r.from ?? -Infinity) && v < (r.to ?? Infinity)) return r.color;
+            }
+            return threshFill.defaultColor ?? threshFill.aboveColor;
+          }
+          return v >= threshFill.threshold ? threshFill.aboveColor : threshFill.belowColor;
+        }
+        return staticFillHex;
+      }
+
+      const getIconFn: ((d: any) => any) | undefined = shapeCatCtrl
+        ? (d: any) => {
+            const val = String(d.properties?.[shapeCatCtrl.column] ?? "");
+            const rule = shapeCatCtrl.rules.find(r => r.values.includes(val));
+            return getShapeIcon(rule?.shape ?? shapeCatCtrl.defaultShape ?? "circle", getFillHexForFeature(d));
+          }
+        : useIconShape
+        ? (d: any) => getShapeIcon(pointShape, getFillHexForFeature(d))
+        : undefined;
 
       const fillColorFn: any = threshFill
         ? (d: any) => {
@@ -1693,12 +1724,15 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
           : layer.style.radius,
 
         // Icon-shape props (used when pointType: "icon")
-        getIcon: iconDescriptor ? (() => iconDescriptor) : undefined,
+        // Color is baked into the SVG; getIconColor is used for opacity control only
+        getIcon: getIconFn,
         getIconSize: radCtrl
           ? (d: any) => lerp(Number(d.properties?.[radCtrl!.column] ?? 0), radCtrl!.min, radCtrl!.max, radCtrl!.minOutput, radCtrl!.maxOutput) * 2
           : (layer.style.radius ?? 6) * 2,
         iconSizeUnits: "pixels" as const,
-        getIconColor: fillColorFn,
+        getIconColor: numOpacity
+          ? (d: any) => [255, 255, 255, Math.round(lerp(Number(d.properties?.[numOpacity!.column] ?? 0), numOpacity!.min, numOpacity!.max, numOpacity!.minOutput, numOpacity!.maxOutput) * 255)] as [number,number,number,number]
+          : [255, 255, 255, fillAlpha] as [number,number,number,number],
 
         getFillColor: fillColorFn,
 
@@ -1723,7 +1757,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
         updateTriggers: {
           getPointRadius:  [layer.controls, layer.style.radius],
           getIconSize:     [layer.controls, layer.style.radius],
-          getIcon:         [pointShape],
+          getIcon:         [pointShape, shapeCatCtrl, layer.controls, layer.style.color],
           getFillColor:    [layer.controls, layer.style.color, layer.style.opacity],
           getIconColor:    [layer.controls, layer.style.color, layer.style.opacity],
           getLineColor:    [layer.controls, layer.style.strokeColor, layer.style.strokeOpacity],

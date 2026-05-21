@@ -1,6 +1,8 @@
 "use client";
 import React from "react";
-import type { TableRow, MapLayer, LayerControl, AttrOperator, FillColorRule, TemporalMode, ColorRange } from "@/lib/types";
+import type { TableRow, MapLayer, LayerControl, AttrOperator, FillColorRule, TemporalMode, ColorRange, ShapeRule } from "@/lib/types";
+import { GEOMETRIC_ICONS, ENERGY_ICONS, findIcon, iconDataUri } from "@/lib/point-icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateTableDialog } from "@/components/create-table-dialog";
 import { ImportTasksPanel } from "@/components/import-tasks-panel";
 import { DeleteTableDialog } from "@/components/delete-table-dialog";
@@ -244,13 +246,17 @@ function PointShapePath({ shape, color }: { shape: string; color: string }) {
     case "star":     return <polygon points="8,1.5 9.5,5.5 14,5.5 10.5,8.5 12,13 8,10.5 4,13 5.5,8.5 2,5.5 6.5,5.5" fill={color} />;
     case "cross":    return <path d="M5.5,2H10.5V5.5H14V10.5H10.5V14H5.5V10.5H2V5.5H5.5Z" fill={color} />;
     case "hexagon":  return <polygon points="14,8 11,13.5 5,13.5 2,8 5,2.5 11,2.5" fill={color} />;
-    default:         return (
+    case "circle":   return (
       <>
         <circle cx="4"   cy="11" r="2.5" fill={color} />
         <circle cx="12"  cy="4"  r="2"   fill={color} opacity="0.65" />
         <circle cx="9"   cy="10" r="1.5" fill={color} opacity="0.4" />
       </>
     );
+    default: {
+      const href = iconDataUri(findIcon(shape), color);
+      return <image href={href} x="0" y="0" width="16" height="16" />;
+    }
   }
 }
 
@@ -1474,6 +1480,224 @@ function FillOpacityControlEditor({ f, layer, onUpdateLayer, nonGeomCols, connec
   );
 }
 
+// ─── shape picker popover ──────────────────────────────────────────────────────
+function ShapePickerButton({ shape, color, onSelect }: {
+  shape: string; color: string; onSelect: (s: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const icon = findIcon(shape);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          title={icon.label}
+          className="flex items-center justify-center w-7 h-7 rounded border border-border hover:border-primary/60 bg-background transition-colors"
+        >
+          <img src={iconDataUri(icon, color)} width={16} height={16} alt={icon.label} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="p-2 w-auto space-y-2">
+        {[{ label: "Geometric", icons: GEOMETRIC_ICONS }, { label: "Energy", icons: ENERGY_ICONS }].map(cat => (
+          <div key={cat.label} className="space-y-1">
+            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</p>
+            <div className="flex flex-wrap gap-1">
+              {cat.icons.map(ic => (
+                <button
+                  key={ic.id}
+                  title={ic.label}
+                  onClick={() => { onSelect(ic.id); setOpen(false); }}
+                  className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${shape === ic.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+                >
+                  <img src={iconDataUri(ic, color)} width={14} height={14} alt={ic.label} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── shape-by-value editor ────────────────────────────────────────────────────
+function ShapeCategoricalEditor({ f, layer, onUpdateLayer, connectionId, fillColor }: {
+  f: Extract<LayerControl, { type: "shape-categorical" }>;
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  connectionId: string;
+  fillColor: string;
+}) {
+  const [loadingDb, setLoadingDb] = React.useState(false);
+
+  function update(patch: Partial<typeof f>) {
+    onUpdateLayer(layer.id, { controls: layer.controls.map(c => c.id === f.id ? { ...c, ...patch } : c) as LayerControl[] });
+  }
+
+  React.useEffect(() => {
+    if (!f.column || f.rules.length > 0) return;
+    setLoadingDb(true);
+    fetch("/api/pg/column-values", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: f.column }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        const vals: string[] = d.values ?? [];
+        if (vals.length > 0) {
+          const shapes = GEOMETRIC_ICONS.map(i => i.id);
+          update({ rules: vals.slice(0, 20).map((v, i) => ({ values: [v], shape: shapes[i % shapes.length] })) });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDb(false));
+  }, [f.column, layer.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loadingDb) return <p className="text-[10px] text-muted-foreground py-1">Loading values…</p>;
+
+  return (
+    <div className="space-y-1.5 mt-1">
+      {f.rules.map((rule, i) => (
+        <div key={i} className="flex items-center gap-2 min-w-0">
+          <ShapePickerButton
+            shape={rule.shape}
+            color={fillColor}
+            onSelect={s => update({ rules: f.rules.map((r, ri) => ri === i ? { ...r, shape: s } : r) })}
+          />
+          <span className="text-[11px] flex-1 truncate min-w-0 text-foreground/80" title={rule.values.join(", ")}>
+            {rule.values.length > 0 ? rule.values.join(", ") : <em className="text-muted-foreground">no values</em>}
+          </span>
+        </div>
+      ))}
+      {f.rules.length > 0 && (
+        <div className="flex items-center gap-2 pt-0.5 border-t border-border/30 mt-1">
+          <ShapePickerButton
+            shape={f.defaultShape}
+            color={fillColor}
+            onSelect={s => update({ defaultShape: s })}
+          />
+          <span className="text-[10px] text-muted-foreground italic">other values</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── shape section editor (static + by-value) ─────────────────────────────────
+function ShapeEditor({ layer, onUpdateLayer, nonGeomCols, connectionId }: {
+  layer: MapLayer;
+  onUpdateLayer: (id: string, patch: Partial<MapLayer>) => void;
+  nonGeomCols: { name: string; dataType: string; isGeom: boolean }[];
+  connectionId: string;
+}) {
+  const [modeLoading, setModeLoading] = React.useState(false);
+
+  const shapeCatCtrl = (layer.controls ?? []).find(c => c.type === "shape-categorical") as Extract<LayerControl, { type: "shape-categorical" }> | undefined;
+  const shapeBasedOn = shapeCatCtrl?.column ?? "";
+  const currentShape = layer.style.pointShape ?? "circle";
+  const fillColor = layer.style.color ?? "#3b82f6";
+
+  async function handleShapeBy(col: string) {
+    if (!col || col === "__none__") {
+      onUpdateLayer(layer.id, { controls: (layer.controls ?? []).filter(c => c.type !== "shape-categorical") as LayerControl[] });
+      return;
+    }
+    setModeLoading(true);
+    try {
+      const r = await fetch("/api/pg/column-values", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, schema: layer.table.table_schema, table: layer.table.table_name, column: col }),
+      });
+      const d = await r.json();
+      const vals: string[] = d.values ?? [];
+      const shapes = GEOMETRIC_ICONS.map(i => i.id);
+      const rules: ShapeRule[] = vals.slice(0, 20).map((v, i) => ({ values: [v], shape: shapes[i % shapes.length] }));
+      const newCtrl: Extract<LayerControl, { type: "shape-categorical" }> = shapeCatCtrl
+        ? { ...shapeCatCtrl, column: col, rules }
+        : { id: crypto.randomUUID(), type: "shape-categorical", enabled: true, shared: false, column: col, rules, defaultShape: "circle" };
+      onUpdateLayer(layer.id, {
+        controls: shapeCatCtrl
+          ? ((layer.controls ?? []).map(c => c.id === shapeCatCtrl.id ? newCtrl : c) as LayerControl[])
+          : [...((layer.controls ?? []).filter(c => c.type !== "shape-categorical")), newCtrl],
+      });
+    } catch {}
+    setModeLoading(false);
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Based on */}
+      <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
+        <Label className="text-xs text-muted-foreground">Based on</Label>
+        <Select value={shapeBasedOn || "__none__"} onValueChange={handleShapeBy} disabled={modeLoading}>
+          <SelectTrigger className="h-6 text-[11px] w-full overflow-hidden [&>span]:truncate">
+            <SelectValue placeholder="Fixed shape" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">Fixed shape</SelectItem>
+            {nonGeomCols.map(c => (
+              <SelectItem key={c.name} value={c.name} className="text-xs">
+                <span className="flex items-center gap-2 w-full min-w-0">
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{c.dataType}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {modeLoading && <p className="text-[10px] text-muted-foreground">Loading…</p>}
+
+      {/* Fixed shape picker */}
+      {!modeLoading && !shapeBasedOn && (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground font-medium">Geometric</p>
+            <div className="flex flex-wrap gap-1.5">
+              {GEOMETRIC_ICONS.map(ic => (
+                <button
+                  key={ic.id}
+                  title={ic.label}
+                  onClick={() => onUpdateLayer(layer.id, { style: { ...layer.style, pointShape: ic.id } })}
+                  className={`flex items-center justify-center w-8 h-8 rounded border transition-colors ${currentShape === ic.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+                >
+                  <img src={iconDataUri(ic, fillColor)} width={16} height={16} alt={ic.label} />
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground font-medium">Energy</p>
+            <div className="flex flex-wrap gap-1.5">
+              {ENERGY_ICONS.map(ic => (
+                <button
+                  key={ic.id}
+                  title={ic.label}
+                  onClick={() => onUpdateLayer(layer.id, { style: { ...layer.style, pointShape: ic.id } })}
+                  className={`flex items-center justify-center w-8 h-8 rounded border transition-colors ${currentShape === ic.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+                >
+                  <img src={iconDataUri(ic, fillColor)} width={16} height={16} alt={ic.label} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shape by value */}
+      {!modeLoading && shapeCatCtrl && (
+        <ShapeCategoricalEditor
+          f={shapeCatCtrl}
+          layer={layer}
+          onUpdateLayer={onUpdateLayer}
+          connectionId={connectionId}
+          fillColor={fillColor}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── unified layer filter editor ──────────────────────────────────────────────
 function LayerFilterEditor({
   layer, connectionId, onUpdateLayer,
@@ -1485,6 +1709,7 @@ function LayerFilterEditor({
   const [activeTab, setActiveTab] = React.useState<"style" | "filter">("style");
   const [fillOpen, setFillOpen] = React.useState(false);
   const [strokeOpen, setStrokeOpen] = React.useState(false);
+  const [shapeOpen, setShapeOpen] = React.useState(false);
   const [radiusOpen, setRadiusOpen] = React.useState(false);
   const [lineWidthOpen, setLineWidthOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState<Set<string>>(
@@ -1618,8 +1843,9 @@ function LayerFilterEditor({
     categorical: { label: "Category",  kind: "Hybrid", kindCls: "bg-teal-500/15 text-teal-600 dark:text-teal-400",       icon: <Tag        className="h-3 w-3" /> },
     threshold:   { label: "Threshold", kind: "Style",  kindCls: "bg-orange-500/15 text-orange-600 dark:text-orange-400", icon: <Paintbrush className="h-3 w-3" /> },
     numeric:     { label: "Opacity",   kind: "Style",  kindCls: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400", icon: <Paintbrush className="h-3 w-3" /> },
-    temporal:    { label: "Timeline",  kind: "Filter", kindCls: "bg-amber-500/15 text-amber-600 dark:text-amber-400",    icon: <Calendar   className="h-3 w-3" /> },
-    attribute:   { label: "Condition", kind: "Filter", kindCls: "bg-slate-500/15 text-slate-500 dark:text-slate-400",    icon: <Filter     className="h-3 w-3" /> },
+    temporal:           { label: "Timeline",  kind: "Filter", kindCls: "bg-amber-500/15 text-amber-600 dark:text-amber-400",    icon: <Calendar   className="h-3 w-3" /> },
+    attribute:          { label: "Condition", kind: "Filter", kindCls: "bg-slate-500/15 text-slate-500 dark:text-slate-400",    icon: <Filter     className="h-3 w-3" /> },
+    "shape-categorical": { label: "Shape",   kind: "Style",  kindCls: "bg-teal-500/15 text-teal-600 dark:text-teal-400",       icon: <Tag        className="h-3 w-3" /> },
   };
 
   // All available control options (geom-aware)
@@ -1937,39 +2163,25 @@ function LayerFilterEditor({
           );
         })()}
 
-        {/* Shape section — points only */}
-        {isPoint && (() => {
-          const SHAPES: { id: string; label: string; svg: React.ReactNode }[] = [
-            { id: "circle",   label: "Circle",   svg: <circle cx="8" cy="8" r="6.5" /> },
-            { id: "square",   label: "Square",   svg: <rect x="1.5" y="1.5" width="13" height="13" rx="1" /> },
-            { id: "triangle", label: "Triangle", svg: <polygon points="8,1.5 14.5,14.5 1.5,14.5" /> },
-            { id: "diamond",  label: "Diamond",  svg: <polygon points="8,1 15,8 8,15 1,8" /> },
-            { id: "star",     label: "Star",     svg: <polygon points="8,1 10,6 15,6 11,9 12.5,14.5 8,11.5 3.5,14.5 5,9 1,6 6,6" /> },
-            { id: "cross",    label: "Cross",    svg: <path d="M5.5,1.5H10.5V5.5H14.5V10.5H10.5V14.5H5.5V10.5H1.5V5.5H5.5Z" /> },
-            { id: "hexagon",  label: "Hexagon",  svg: <polygon points="14.5,8 11.25,13.8 4.75,13.8 1.5,8 4.75,2.2 11.25,2.2" /> },
-          ];
-          const currentShape = layer.style.pointShape ?? "circle";
-          const fillColor = layer.style.color ?? "#3b82f6";
-          return (
-            <div className="px-2.5 py-2 space-y-2">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Shape</p>
-              <div className="flex flex-wrap gap-1.5">
-                {SHAPES.map(s => (
-                  <button
-                    key={s.id}
-                    title={s.label}
-                    onClick={() => onUpdateLayer(layer.id, { style: { ...layer.style, pointShape: s.id } })}
-                    className={`flex items-center justify-center w-8 h-8 rounded border transition-colors ${currentShape === s.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill={fillColor}>
-                      {s.svg}
-                    </svg>
-                  </button>
-                ))}
-              </div>
+        {/* Shape section — points only, collapsible */}
+        {isPoint && (
+          <div className="border border-border/50 rounded-lg overflow-hidden">
+            <div
+              role="button" tabIndex={0}
+              className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors select-none cursor-pointer"
+              onClick={() => setShapeOpen(o => !o)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShapeOpen(o => !o); } }}
+            >
+              <ChevronDown className={`h-3 w-3 text-muted-foreground/60 transition-transform shrink-0 ${shapeOpen ? "" : "-rotate-90"}`} />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">Shape</span>
             </div>
-          );
-        })()}
+            {shapeOpen && (
+              <div className="px-2.5 py-2">
+                <ShapeEditor layer={layer} onUpdateLayer={onUpdateLayer} nonGeomCols={nonGeomCols} connectionId={connectionId} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Radius section — points only, collapsible card */}
         {isPoint && (() => {

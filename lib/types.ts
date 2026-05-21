@@ -36,6 +36,11 @@ export interface FillColorRule {
   color: string;
 }
 
+export interface ShapeRule {
+  values: string[];
+  shape: string;
+}
+
 export interface ColorRange {
   from: number | null;
   to: number | null;
@@ -89,6 +94,11 @@ export type LayerControl =
       label?: string;
       ranges?: ColorRange[];
       defaultColor?: string;
+    }
+  | {
+      id: string; type: "shape-categorical"; enabled: boolean; shared: boolean;
+      column: string; rules: ShapeRule[]; defaultShape: string;
+      label?: string;
     };
 
 // Backward-compat aliases
@@ -184,6 +194,8 @@ export function migrateLayerControls(raw: any): LayerControl[] {
       controls.push({ ...base, type: "numeric", column: f.column ?? "", min: f.min ?? 0, max: f.max ?? 0, dataMin: f.dataMin ?? 0, dataMax: f.dataMax ?? 0, minOutput: f.minOutput ?? 0.2, maxOutput: f.maxOutput ?? 1, target: f.target ?? "opacity" });
     } else if (f.type === "threshold") {
       controls.push({ ...base, type: "threshold", column: f.column ?? "", threshold: f.threshold ?? 0, aboveColor: f.aboveColor ?? "#22c55e", belowColor: f.belowColor ?? "#ef4444", target: f.target ?? "fill", label: f.label });
+    } else if (f.type === "shape-categorical") {
+      controls.push({ ...base, type: "shape-categorical", column: f.column ?? "", rules: f.rules ?? [], defaultShape: f.defaultShape ?? "circle" });
     }
   }
 

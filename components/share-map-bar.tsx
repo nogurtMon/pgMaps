@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import type { MapLayer, LayerControl, TemporalMode } from "@/lib/types";
+import { findIcon, iconDataUri } from "@/lib/point-icons";
 import { getBasemapColor, type UserBasemap } from "@/lib/basemaps";
 import Link from "next/link";
 
@@ -50,7 +51,11 @@ function PointSwatchShape({ shape, fill }: { shape: string; fill: string }) {
     case "star":     return <polygon points="7,1 8.5,5 13,5 9.5,8 11,12.5 7,10 3,12.5 4.5,8 1,5 5.5,5" fill={fill} />;
     case "cross":    return <path d="M4.5,1H9.5V4.5H13V9.5H9.5V13H4.5V9.5H1V4.5H4.5Z" fill={fill} />;
     case "hexagon":  return <polygon points="13,7 10,12.5 4,12.5 1,7 4,1.5 10,1.5" fill={fill} />;
-    default:         return <circle cx="7" cy="7" r="5" fill={fill} />;
+    case "circle":   return <circle cx="7" cy="7" r="5" fill={fill} />;
+    default: {
+      const href = iconDataUri(findIcon(shape), fill);
+      return <image href={href} x="0" y="0" width="14" height="14" />;
+    }
   }
 }
 
@@ -271,6 +276,31 @@ function CategoricalViewer({ f, layerId, onUpdate }: {
   );
 }
 
+function ShapeCategoricalLegend({ f, layer }: {
+  f: Extract<LayerControl, { type: "shape-categorical" }>;
+  layer: MapLayer;
+}) {
+  const fill = ((layer.controls ?? []).find(c => c.type === "fill") as any)?.color ?? layer.style?.color ?? "#3b82f6";
+  const allRules = [...f.rules, { values: ["(other)"], shape: f.defaultShape }];
+  return (
+    <div>
+      {allRules.map((rule, i) => {
+        const label = i === allRules.length - 1
+          ? <em className="text-muted-foreground">Other</em>
+          : <>{rule.values.slice(0, 2).join(", ")}{rule.values.length > 2 && <span className="text-muted-foreground"> +{rule.values.length - 2}</span>}</>;
+        return (
+          <div key={i} className="flex items-center gap-1.5 py-px">
+            <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
+              <PointSwatchShape shape={rule.shape} fill={fill} />
+            </svg>
+            <span className="text-[10px] truncate leading-tight">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function NumericViewer({ f, layerId, onUpdate }: {
   f: Extract<LayerControl, { type: "numeric" }>; layerId: string;
   onUpdate: (id: string, patch: any) => void;
@@ -397,6 +427,7 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
         const catControl = sharedControls.find(c => c.type === "categorical") as Extract<LayerControl, { type: "categorical" }> | undefined;
         const thrControl = sharedControls.find(c => c.type === "threshold") as Extract<LayerControl, { type: "threshold" }> | undefined;
         const lineWidthControl = sharedControls.find(c => c.type === "numeric" && (c as Extract<LayerControl, { type: "numeric" }>).target === "line-width") as Extract<LayerControl, { type: "numeric" }> | undefined;
+        const shapeCatControl = (layer.controls ?? []).find(c => c.type === "shape-categorical" && c.enabled) as Extract<LayerControl, { type: "shape-categorical" }> | undefined;
         const interactiveControls = sharedControls.filter(c => c.type === "temporal" || (c.type === "numeric" && (c as any).target !== "radius" && (c as any).target !== "line-width"));
         const hasCatFill = catControl && catControl.target === "fill" && catControl.rules.length > 0;
         const hasInteractive = interactiveControls.length > 0;
@@ -425,12 +456,18 @@ function LayersPanel({ layers, onUpdateLayerRaw, onToggleVisible, onFlyTo }: {
               )}
             </div>
 
-            {/* Legend — always visible: categorical, threshold, line-width scale */}
-            {(catControl || thrControl || lineWidthControl) && (
+            {/* Legend — always visible: categorical, threshold, line-width scale, shape-categorical */}
+            {(catControl || thrControl || lineWidthControl || shapeCatControl) && (
               <div className="pl-7 pr-3 pb-2 space-y-1">
                 {catControl && <CategoricalViewer f={catControl} layerId={layer.id} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
                 {thrControl && <ThresholdViewer f={thrControl} onUpdate={(cid, p) => handleControlUpdate(layer.id, cid, p)} />}
                 {lineWidthControl && <LineWidthScaleLegend ctrl={lineWidthControl} layer={layer} />}
+                {shapeCatControl && (
+                  <>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mt-1">Shape by {fmtCol(shapeCatControl.column)}</p>
+                    <ShapeCategoricalLegend f={shapeCatControl} layer={layer} />
+                  </>
+                )}
               </div>
             )}
 
