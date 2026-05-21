@@ -12,12 +12,12 @@ ARG NEXT_PUBLIC_MAPTILER_KEY
 ENV NEXT_PUBLIC_MAPTILER_KEY=$NEXT_PUBLIC_MAPTILER_KEY
 RUN npx next build
 
-FROM node:20-alpine AS runner
+FROM postgis/postgis:16-3.5-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN apk add --no-cache postgresql16 postgresql16-contrib postgis su-exec openssl
+RUN apk add --no-cache nodejs su-exec openssl
 
 ENV PGDATA=/var/lib/postgresql/data
 ENV POSTGRES_URL=postgres://postgres@127.0.0.1:5432/postgis_frontend
