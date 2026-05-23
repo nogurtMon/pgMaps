@@ -1,15 +1,15 @@
 services:
   app:
-    build:
-      context: .
-      args:
-        - NEXT_PUBLIC_MAPTILER_KEY=${NEXT_PUBLIC_MAPTILER_KEY:-}
+    image: nogurtmon/postgis-frontend:latest
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      - DSN_ENCRYPTION_KEY=${DSN_ENCRYPTION_KEY:-}
-      - APP_PASSWORD=${APP_PASSWORD:-}
-      - PORT=${PORT:-3000}
+      # Passed through only when set in the host environment or .env file.
+      # If unset, the image defaults apply (bundled PostgreSQL, no password, auto-generated key).
+      - APP_PASSWORD
+      - POSTGRES_URL
+      - DSN_ENCRYPTION_KEY
+      - PORT
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - app_data:/data
