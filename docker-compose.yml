@@ -1,0 +1,17 @@
+services:
+  app:
+    image: nogurtmon1/postgis-frontend:latest
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      # POSTGRES_URL is required — set it to your PostgreSQL connection string.
+      - POSTGRES_URL
+      - APP_PASSWORD
+      - DSN_ENCRYPTION_KEY
+      - PORT
+    volumes:
+      - app_data:/data
+    restart: unless-stopped
+
+volumes:
+  app_data:
