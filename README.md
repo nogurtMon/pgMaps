@@ -21,7 +21,7 @@ Loading every shapefile, GeoJSON, etc. into PostgreSQL delivers one core benefit
 ## Features
 - **Easily load spatial files into your PostgreSQL database**
   - Supports CSV, GeoJSON, GeoPackage, KML, Shapefile (SHP), and XLSX
-  - Imports directly from ArcGIS Feature Servers
+  - Import directly from ArcGIS Feature Servers
   - Up to 1 GB per file
 - **Visualize and edit geospatial data at scale**
   - Highly performant large-scale rendering powered by [Deck.gl](https://deck.gl)
@@ -37,11 +37,15 @@ Don't have a PostgreSQL database yet? [Neon](https://neon.tech) offers a free, s
 
 Prefer a hosted setup? [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps)
 
-Generate an encryption key once and hold onto it — you'll pass the same one every time you start the container:
+### Getting Started with Docker
+
+Generate an encryption key to set as an environment variable.
 
 ```bash
 openssl rand -hex 32
 ```
+
+Run the command below, filling in environment variables.
 
 ```bash
 docker run -d \
