@@ -14,7 +14,7 @@ Open-source tool for managing maps and geospatial data in PostGIS-enabled Postgr
 
 pgMaps is built on a simple conviction: **geospatial data belongs in a database, not a bunch of files**.
 
-Loading every shapefile, GeoJSON, and everything else into PostgreSQL delivers one core benefit: standardization. With all your data in one place and one structure, it's far easier to view, edit, analyze, manage, and share.
+Loading every shapefile, GeoJSON, etc. into PostgreSQL delivers one core benefit: standardization. With all your data in one place and one structure, it's far easier to view, edit, analyze, manage, and share.
 
 ---
 
