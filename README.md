@@ -7,7 +7,6 @@
 Open-source tool for managing maps and geospatial data in PostGIS-enabled PostgreSQL databases
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps)
 
 </div>
 
@@ -36,7 +35,7 @@ Loading every shapefile, GeoJSON, and everything else into PostgreSQL delivers o
 
 Don't have a PostgreSQL database yet? [Neon](https://neon.tech) offers a free, serverless Postgres instance with PostGIS available as an extension — ready in about a minute, no installation required.
 
-Prefer a hosted setup? [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps) deploys the same Docker image — you'll be prompted for the three required env vars below during setup.
+Prefer a hosted setup? [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps)
 
 Generate an encryption key once and hold onto it — you'll pass the same one every time you start the container:
 
