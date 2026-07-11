@@ -7,14 +7,13 @@
 Open-source tool for managing maps and geospatial data in PostGIS-enabled PostgreSQL databases
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps)
 
 </div>
 
 ## Philosophy
 
 pgMaps is built on a simple conviction: **geospatial data belongs in a database, not a bunch of files**.
-
-My dad built the backend for the first cashless tollway systems in Florida. When he saw how I was managing GIS data, he asked: "Instead of using all those files, why don't you just throw all that data into a database, then process and analyze it from there?" That suggestion led me to use PostgreSQL for all my geospatial work. It's the best GIS advice I've taken.
 
 Loading every shapefile, GeoJSON, and everything else into PostgreSQL delivers one core benefit: standardization. With all your data in one place and one structure, it's far easier to view, edit, analyze, manage, and share.
 
@@ -36,6 +35,8 @@ Loading every shapefile, GeoJSON, and everything else into PostgreSQL delivers o
 **Requirements:** [Docker](https://docs.docker.com/get-started/get-docker/), a PostgreSQL/PostGIS database
 
 Don't have a PostgreSQL database yet? [Neon](https://neon.tech) offers a free, serverless Postgres instance with PostGIS available as an extension — ready in about a minute, no installation required.
+
+Prefer a hosted setup? [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pgmaps) deploys the same Docker image — you'll be prompted for the three required env vars below during setup.
 
 Generate an encryption key once and hold onto it — you'll pass the same one every time you start the container:
 
