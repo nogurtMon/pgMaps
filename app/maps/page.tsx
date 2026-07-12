@@ -922,6 +922,18 @@ export default function MapsPage() {
                   </div>
                 )}
 
+                {visibleViews.length === 0 && !showArchived && !currentFolder && sortedFolders.length === 0 && templates.length === 0 && !creatingFolder && (
+                  <div className="text-center py-16">
+                    <Map className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-4">
+                      No maps yet. Create your first map to get started.
+                    </p>
+                    <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setNewMapDialogOpen(true)}>
+                      <Plus className="h-3 w-3" /> New map
+                    </Button>
+                  </div>
+                )}
+
                 {visibleViews.length > 0 && (
                   <div className="flex flex-col divide-y border rounded-lg overflow-hidden">
                     <SortableContext items={visibleViews.map(v => v.id)} strategy={verticalListSortingStrategy}>
