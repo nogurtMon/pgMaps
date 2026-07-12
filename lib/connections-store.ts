@@ -69,13 +69,24 @@ async function _doEnsureTable(): Promise<void> {
   `);
   await getPool().query(`CREATE EXTENSION IF NOT EXISTS postgis`).catch(() => {});
 
-  // Any saved connection pointing at the same host+database as POSTGRES_URL is the
-  // same physical database — keep its encrypted_dsn in sync with the current env
-  // value so rotating that database's password doesn't strand the row under an
-  // unrecoverable old key.
   const envDsn = process.env.POSTGRES_URL ?? process.env.STORAGE_DB_URL;
   if (envDsn) {
     const { host, database } = parseHostDb(envDsn);
+
+    // First run: seed a connection for the app's own storage database so it's
+    // immediately browsable, without ever clobbering connections a user has added.
+    // The WHERE NOT EXISTS makes this safe against concurrent workers racing here.
+    await getPool().query(
+      `INSERT INTO _pgmaps_connections (id, name, host, database, encrypted_dsn)
+       SELECT $1, $2, $3, $4, $5
+       WHERE NOT EXISTS (SELECT 1 FROM _pgmaps_connections)`,
+      [newId(), "Default", host, database, encryptDsn(envDsn)]
+    );
+
+    // Any saved connection pointing at the same host+database as POSTGRES_URL is the
+    // same physical database — keep its encrypted_dsn in sync with the current env
+    // value so rotating that database's password doesn't strand the row under an
+    // unrecoverable old key.
     await getPool().query(
       `UPDATE _pgmaps_connections SET encrypted_dsn = $1 WHERE host = $2 AND database = $3`,
       [encryptDsn(envDsn), host, database]
