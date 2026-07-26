@@ -6,6 +6,7 @@ import { MapboxOverlay } from "@deck.gl/mapbox";
 import { MVTLayer } from "@deck.gl/geo-layers";
 import { GeoJsonLayer, TextLayer } from "@deck.gl/layers";
 import { GeocoderControl } from "@/components/geocoder-control";
+import { GeometryThumbnail } from "@/components/geometry-thumbnail";
 import type { MapLayer, LayerControl, LayerLabel, UndoableOp } from "@/lib/types";
 import { findIcon } from "@/lib/point-icons";
 import { Plus, Minus, Navigation, Home, MapPin, Copy, Check, X, ChevronLeft, ChevronRight, Pencil, Settings2, PenLine, GripHorizontal, SquarePen, Trash2, Sheet, Ruler, Globe } from "lucide-react";
@@ -263,7 +264,7 @@ interface Props {
 }
 
 // ─── per-feature popup body: fetches full row via ctid on mount ───────────────
-function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeometry, onDeleteFeature, onFieldEdited }: {
+function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeometry, onDeleteFeature, onFieldEdited, basemap, userBasemaps }: {
   item: SelectionItem;
   editMode: boolean;
   onFieldSaved: () => void;
@@ -271,6 +272,8 @@ function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeomet
   onEditGeometry?: () => void;
   onDeleteFeature?: () => void;
   onFieldEdited?: (field: string, oldValue: any, newValue: any, newCtid: string) => void;
+  basemap: string;
+  userBasemaps: UserBasemap[];
 }) {
   const isMobile = useIsMobile();
   const [row, setRow] = React.useState<Record<string, any> | null>(null);
@@ -364,16 +367,32 @@ function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeomet
     return "text";
   }
 
-  if (loading) return <p className="text-[11px] text-muted-foreground px-3 py-3">Loading…</p>;
+  const geomThumb = isMobile && item.feature.geometry
+    ? <GeometryThumbnail feature={item.feature} layer={item.layer} basemap={basemap} userBasemaps={userBasemaps} />
+    : null;
+
+  if (loading) return (
+    <>
+      {geomThumb}
+      <p className="text-[11px] text-muted-foreground px-3 py-3">Loading…</p>
+    </>
+  );
 
   const display: [string, any][] = row
     ? Object.entries(row)
     : Object.entries(item.feature.properties || {}).filter(([k]) => k !== "_ctid");
 
-  if (display.length === 0) return <p className="text-[11px] text-muted-foreground px-3 py-3">No attributes</p>;
+  if (display.length === 0) return (
+    <>
+      {geomThumb}
+      <p className="text-[11px] text-muted-foreground px-3 py-3">No attributes</p>
+    </>
+  );
 
   return (
-    <div className="divide-y">
+    <>
+      {geomThumb}
+      <div className="divide-y">
       {display.map(([key, value]) => {
         const isEditing = editingField === key;
         const isSaving = savingField === key;
@@ -487,7 +506,8 @@ function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeomet
           Add fields
         </button>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -2310,6 +2330,8 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
             <FeatureRows
               item={selectionItems[selectionIdx]}
               editMode={editMode}
+              basemap={basemap}
+              userBasemaps={userBasemaps}
               onFieldSaved={() => handleFeatureSaved(selectionItems[selectionIdx].layer.id)}
               onManageTable={onManageTable
                 ? () => {
