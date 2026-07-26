@@ -103,7 +103,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
   if (status === "loading") {
     return (
-      <div className="h-screen flex items-center justify-center text-sm text-muted-foreground">
+      <div className="h-dvh flex items-center justify-center text-sm text-muted-foreground">
         Loading shared map…
       </div>
     );
@@ -111,7 +111,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
   if (status === "requires_password") {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-dvh flex items-center justify-center">
         <div className="w-full max-w-xs space-y-4 p-6 border rounded-lg bg-card shadow-sm">
           <div className="space-y-1">
             <p className="text-sm font-medium">Password required</p>
@@ -142,7 +142,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
   if (status === "expired") {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-dvh flex items-center justify-center">
         <div className="text-center space-y-3 max-w-xs">
           <p className="text-sm font-medium">Link expired</p>
           <p className="text-xs text-muted-foreground">This share link has expired and is no longer available.</p>
@@ -154,7 +154,7 @@ export default function ShareViewPage({ params }: { params: Promise<{ id: string
 
   if (status === "error") {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-dvh flex items-center justify-center">
         <div className="text-center space-y-3 max-w-xs">
           <p className="text-sm font-medium">{errorMsg}</p>
           <Link href="/" className="text-xs text-muted-foreground underline underline-offset-2">

@@ -52,7 +52,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="h-screen flex items-center justify-center">
+    <div className="h-dvh flex items-center justify-center">
       <React.Suspense>
         <LoginForm />
       </React.Suspense>

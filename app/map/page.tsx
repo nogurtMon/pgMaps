@@ -440,7 +440,7 @@ export default function Home() {
   return (
     <ImportTasksProvider>
     <Toaster />
-    <div className="h-screen overflow-hidden grid grid-rows-[auto_1fr]">
+    <div className="h-dvh overflow-hidden grid grid-rows-[auto_1fr]">
       <header className="bg-background border-b px-2 md:px-3 py-1.5 flex items-center gap-1.5 md:gap-3 shrink-0">
         {/* Elephant logo — dropdown menu */}
         <DropdownMenu>
