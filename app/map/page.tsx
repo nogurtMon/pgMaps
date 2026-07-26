@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Bug, Lightbulb, ChevronDown, ChevronRight, ArrowLeft, Share2, Pencil, Eye, Sun, Moon, SheetIcon, Home as HomeIcon, FilePlus, Undo2, FileText, X, LayoutTemplate, Star, Loader2 } from "lucide-react";
+import { Bug, Lightbulb, ChevronDown, ChevronRight, ArrowLeft, Share2, Pencil, Eye, Sun, Moon, SheetIcon, Home as HomeIcon, FilePlus, Undo2, FileText, X, LayoutTemplate, Star, Loader2, Folder } from "lucide-react";
 import { AttributeTablePanel } from "@/components/attribute-table-panel";
 import { ShareDialog } from "@/components/share-dialog";
 import { TableInfoDialog } from "@/components/table-info-dialog";
@@ -26,6 +26,7 @@ import { DEFAULT_BASEMAP, getBasemapColor, getBasemapLabel, type UserBasemap } f
 import { ImportTasksProvider } from "@/lib/import-tasks-context";
 import { Toaster } from "@/components/toaster";
 import { MapLegend } from "@/components/map-legend";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -35,6 +36,7 @@ import {
 export default function Home() {
   const { connectionId, setConnectionId, clearConnection, loaded } = useConnection();
   const { theme, setTheme } = useTheme();
+  const isMobile = useIsMobile();
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [editingConnectionId, setEditingConnectionId] = React.useState<string | undefined>(undefined);
@@ -77,6 +79,28 @@ export default function Home() {
   const [tableInfoTarget, setTableInfoTarget] = React.useState<{ schema: string; table: string } | null>(null);
   const [goToCtid, setGoToCtid] = React.useState<string | undefined>(undefined);
   const [activateGoTo, setActivateGoTo] = React.useState(0);
+
+  // Attribute table isn't supported on mobile — force-close if the viewport
+  // shrinks below the breakpoint while it's open.
+  React.useEffect(() => {
+    if (isMobile) setTablePanelOpen(false);
+  }, [isMobile]);
+
+  // Default to Viewer mode on mobile — only on first detection, so it doesn't
+  // fight a mode the user already picked themselves (e.g. after rotating).
+  const mobileDefaultedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isMobile && !mobileDefaultedRef.current) {
+      mobileDefaultedRef.current = true;
+      setViewMode("viewing");
+    }
+  }, [isMobile]);
+
+  // Renaming isn't allowed in Viewer mode — cancel an in-progress rename if the
+  // mode switches away mid-edit.
+  React.useEffect(() => {
+    if (viewMode === "viewing") setEditingName(false);
+  }, [viewMode]);
 
   function handleSelectionChange(ctids: string[], layerId: string | null) {
     if (tablePanelOpen && layerId && ctids.length > 0) {
@@ -417,7 +441,7 @@ export default function Home() {
     <ImportTasksProvider>
     <Toaster />
     <div className="h-screen overflow-hidden grid grid-rows-[auto_1fr]">
-      <header className="bg-background border-b px-3 py-1.5 flex items-center gap-3 shrink-0">
+      <header className="bg-background border-b px-2 md:px-3 py-1.5 flex items-center gap-1.5 md:gap-3 shrink-0">
         {/* Elephant logo — dropdown menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -472,27 +496,29 @@ export default function Home() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Breadcrumb: Home > [Folder >] Map name */}
+        {/* Breadcrumb: Home > [Folder >] Map name — hidden on mobile, where only the map name shows */}
         <div className="flex items-center gap-1 flex-1 min-w-0">
-          <a
-            href="/maps"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            Home
-          </a>
-          {folderName && folderId && (
-            <>
-              <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-              <a
-                href={`/maps?folder=${folderId}`}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 max-w-[140px] truncate"
-                title={folderName}
-              >
-                {folderName}
-              </a>
-            </>
-          )}
-          <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+          <div className="hidden md:flex items-center gap-1 shrink-0">
+            <a
+              href="/maps"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              Home
+            </a>
+            {folderName && folderId && (
+              <>
+                <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <a
+                  href={`/maps?folder=${folderId}`}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 max-w-[140px] truncate"
+                  title={folderName}
+                >
+                  {folderName}
+                </a>
+              </>
+            )}
+            <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+          </div>
           {editingName ? (
             <input
               ref={nameInputRef}
@@ -506,6 +532,38 @@ export default function Home() {
               className="flex-1 min-w-0 text-sm font-semibold bg-transparent border-b border-primary outline-none"
               autoFocus
             />
+          ) : viewMode === "viewing" && isMobile ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex-1 min-w-0 text-left" title="Home / folder navigation">
+                  {activeViewName
+                    ? <span className="text-sm font-semibold truncate block">{activeViewName}</span>
+                    : <span className="text-sm font-semibold text-muted-foreground block">Untitled map</span>
+                  }
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem asChild>
+                  <a href="/maps" className="flex items-center gap-2">
+                    <HomeIcon className="h-3.5 w-3.5" /> Home
+                  </a>
+                </DropdownMenuItem>
+                {folderName && folderId && (
+                  <DropdownMenuItem asChild>
+                    <a href={`/maps?folder=${folderId}`} className="flex items-center gap-2">
+                      <Folder className="h-3.5 w-3.5" /> <span className="truncate">{folderName}</span>
+                    </a>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : viewMode === "viewing" ? (
+            <div className="flex-1 min-w-0 text-left">
+              {activeViewName
+                ? <span className="text-sm font-semibold truncate block">{activeViewName}</span>
+                : <span className="text-sm font-semibold text-muted-foreground block">Untitled map</span>
+              }
+            </div>
           ) : (
             <button
               className="flex-1 min-w-0 text-left group"
@@ -523,17 +581,17 @@ export default function Home() {
         {/* Commit bar — shown when there are unsaved edits */}
         {editHistory.length > 0 && viewMode === "editing" && (
           <div className="flex items-center gap-1.5 shrink-0 border rounded-md px-2 py-1 bg-muted/40">
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden md:inline text-xs text-muted-foreground">
               {editHistory.length} unsaved change{editHistory.length !== 1 ? "s" : ""}
             </span>
-            <span className="text-muted-foreground/30 select-none">·</span>
+            <span className="hidden md:inline text-muted-foreground/30 select-none">·</span>
             <button
               onClick={undoLast}
               disabled={undoing || editHistory.length === 0}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 hover:bg-muted disabled:opacity-50 transition-colors"
               title="Undo (Ctrl+Z)"
             >
-              <Undo2 className="h-3 w-3" /> Undo
+              <Undo2 className="h-3 w-3" /> <span className="hidden md:inline">Undo</span>
             </button>
             <button
               onClick={commitAll}
@@ -545,16 +603,16 @@ export default function Home() {
         )}
 
         {/* Right controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 md:gap-1 shrink-0">
           {/* Basemap selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="h-7 rounded-md border px-2 text-xs hover:bg-muted transition-colors shrink-0 flex items-center gap-1.5"
+                className="h-7 rounded-md border px-1.5 md:px-2 text-xs hover:bg-muted transition-colors shrink-0 flex items-center gap-1.5"
                 title="Basemap"
               >
                 <div className="w-3.5 h-3.5 rounded-sm border shrink-0" style={{ background: getBasemapColor(basemap) }} />
-                <span>{getBasemapLabel(basemap, userBasemaps)}</span>
+                <span className="hidden md:inline">{getBasemapLabel(basemap, userBasemaps)}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
@@ -571,21 +629,23 @@ export default function Home() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            size="icon" variant={tablePanelOpen ? "default" : "outline"} className="h-7 w-7"
-            title="Attribute table"
-            onClick={() => {
-              const geoLayers = layers.filter(l => l.table.geom_col);
-              if (geoLayers.length === 0) return;
-              const id = tablePanelLayerId && geoLayers.some(l => l.id === tablePanelLayerId)
-                ? tablePanelLayerId
-                : (activeLayerId && geoLayers.some(l => l.id === activeLayerId) ? activeLayerId : geoLayers[0].id);
-              setTablePanelLayerId(id);
-              setTablePanelOpen(v => !v);
-            }}
-          >
-            <SheetIcon className="h-4 w-4" />
-          </Button>
+          {!isMobile && (
+            <Button
+              size="icon" variant={tablePanelOpen ? "default" : "outline"} className="h-7 w-7"
+              title="Attribute table"
+              onClick={() => {
+                const geoLayers = layers.filter(l => l.table.geom_col);
+                if (geoLayers.length === 0) return;
+                const id = tablePanelLayerId && geoLayers.some(l => l.id === tablePanelLayerId)
+                  ? tablePanelLayerId
+                  : (activeLayerId && geoLayers.some(l => l.id === activeLayerId) ? activeLayerId : geoLayers[0].id);
+                setTablePanelLayerId(id);
+                setTablePanelOpen(v => !v);
+              }}
+            >
+              <SheetIcon className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             size="sm" variant={notesOpen ? "default" : "outline"}
             className="h-7 px-2 text-xs gap-1.5"
@@ -593,14 +653,14 @@ export default function Home() {
             onClick={() => setNotesOpen(v => !v)}
           >
             <FileText className="h-3.5 w-3.5" />
-            Description
+            <span className="hidden md:inline">Description</span>
           </Button>
           {/* Editing / Viewing dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 rounded-md border h-7 px-2.5 text-xs hover:bg-muted transition-colors shrink-0">
                 {viewMode === "editing" ? <Pencil className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
-                {viewMode === "editing" ? "Editing" : "Viewing"}
+                <span className="hidden md:inline">{viewMode === "editing" ? "Editing" : "Viewing"}</span>
                 <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
@@ -616,7 +676,7 @@ export default function Home() {
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setShareOpen(true)}>
-            <Share2 className="h-3 w-3" /> Share
+            <Share2 className="h-3 w-3" /> <span className="hidden md:inline">Share</span>
           </Button>
         </div>
       </header>
@@ -650,12 +710,12 @@ export default function Home() {
               userBasemaps={userBasemaps}
               onViewChange={setMapView}
               homeView={homeView}
-              onSetHomeView={setHomeView}
-              onClearHomeView={() => setHomeView(undefined)}
+              onSetHomeView={viewMode === "viewing" ? undefined : setHomeView}
+              onClearHomeView={viewMode === "viewing" ? undefined : () => setHomeView(undefined)}
               editMode={viewMode === "editing"}
               onManageTable={(schema, table) => setTableInfoTarget({ schema, table })}
               onSelectionChange={handleSelectionChange}
-              onShowInTable={handleShowInTable}
+              onShowInTable={isMobile ? undefined : handleShowInTable}
               onAddEdit={addEdit}
               tablePanelOpen={tablePanelOpen}
             />
@@ -665,7 +725,7 @@ export default function Home() {
               zoom={mapView?.zoom}
             />
           </div>
-          {tablePanelOpen && tablePanelLayerId && layers.filter(l => l.table.geom_col).length > 0 && (
+          {!isMobile && tablePanelOpen && tablePanelLayerId && layers.filter(l => l.table.geom_col).length > 0 && (
             <AttributeTablePanel
               layers={layers.filter(l => l.table.geom_col)}
               activeLayerId={tablePanelLayerId}

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -3120,7 +3121,15 @@ export function TableSidebar({
   onAddLayer, onRemoveLayer, onUpdateLayer, onReorderLayers,
   activeLayerId, onActiveLayerChange, onZoomToLayer, onZoomToTable, onFlyTo, onOpenSettings, onEditConnection, onConnectionLost,
 }: Props) {
+  const isMobile = useIsMobile();
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const autoCollapsedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isMobile && !autoCollapsedRef.current) {
+      autoCollapsedRef.current = true;
+      setSidebarCollapsed(true);
+    }
+  }, [isMobile]);
   const [tab, setTab] = React.useState("browser");
   const [allConnections, setAllConnections] = React.useState<{ id: string; name: string; host: string }[]>([]);
   const [connectionsLoaded, setConnectionsLoaded] = React.useState(false);

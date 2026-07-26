@@ -196,6 +196,7 @@ function buildShapeIcon(shape: string, fillHex: string) {
 
 // ─── basemap definitions ──────────────────────────────────────────────────────
 import { resolveBasemapUrl, BLANK_STYLE, type UserBasemap } from "@/lib/basemaps";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── datetime sort helper ─────────────────────────────────────────────────────
 const DATE_KEY_RE = /date|time|week|month|year|dt|timestamp/i;
@@ -271,6 +272,7 @@ function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeomet
   onDeleteFeature?: () => void;
   onFieldEdited?: (field: string, oldValue: any, newValue: any, newCtid: string) => void;
 }) {
+  const isMobile = useIsMobile();
   const [row, setRow] = React.useState<Record<string, any> | null>(null);
   const [columns, setColumns] = React.useState<{ name: string; dataType: string }[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -424,7 +426,7 @@ function FeatureRows({ item, editMode, onFieldSaved, onManageTable, onEditGeomet
                 <CopyButton value={value == null ? "" : String(value)} />
                 {editMode && (
                   <button onClick={() => startEdit(key, value)} title="Edit"
-                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                    className={`shrink-0 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground ${isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
                     {isSaved ? <Check className="h-3 w-3 text-green-500" /> : <Pencil className="h-3 w-3" />}
                   </button>
                 )}
@@ -502,6 +504,7 @@ function PropValue({ value }: { value: string }) {
 }
 
 function CopyButton({ value }: { value: string }) {
+  const isMobile = useIsMobile();
   const [copied, setCopied] = React.useState(false);
   function handleCopy() {
     navigator.clipboard.writeText(value).then(() => {
@@ -511,7 +514,7 @@ function CopyButton({ value }: { value: string }) {
   }
   return (
     <button onClick={handleCopy} title="Copy value"
-      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+      className={`shrink-0 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground ${isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
       {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
     </button>
   );
@@ -987,6 +990,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const isMobile = useIsMobile();
   const [panelPos, setPanelPos] = React.useState<{ x: number; y: number } | null>(null);
   const [panelWidth, setPanelWidth] = React.useState(280);
   const [panelHeight, setPanelHeight] = React.useState(256);
@@ -2151,6 +2155,67 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
     });
   }, [overlay, deckLayers, labelLayers, selectionItems, selectionIdx, geomEditState, mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ─── manual touch-tap picking fallback ───────────────────────────────────
+  // MapboxOverlay used as a MapLibre control (interleaved: false) only receives a
+  // subset of events forwarded by the map, and its layers' onClick reliably fires
+  // for mouse clicks but not for real touch taps (verified against actual touch
+  // events, not mouse-emulated ones — a known rough edge in deck.gl+MapLibre
+  // control-mode integration). This listens to raw touch events directly on
+  // deck.gl's own canvas and runs the same pick/select logic as the mouse onClick
+  // above when it detects a tap (single touch, minimal movement, short duration).
+  React.useEffect(() => {
+    if (!mapLoaded) return;
+    // deck.gl's own canvas is pointer-events:none in control mode (interleaved: false) —
+    // it relies on MapLibre's canvas to actually receive input, so that's what we listen on.
+    const canvas = mapRef.current?.getMap()?.getCanvas();
+    if (!canvas) return;
+
+    let start: { x: number; y: number; t: number } | null = null;
+
+    function onTouchStart(e: TouchEvent) {
+      start = e.touches.length === 1
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }
+        : null;
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      const s = start;
+      start = null;
+      if (!s || e.changedTouches.length !== 1 || e.touches.length !== 0) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - s.x;
+      const dy = touch.clientY - s.y;
+      if (Math.hypot(dx, dy) > 10 || Date.now() - s.t > 500) return; // a drag/pan, not a tap
+      if (geomEditStateRef.current || addFeatureStateRef.current || measureActiveRef.current) return;
+
+      const rect = canvas!.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      const picks: any[] = (overlay as any).pickMultipleObjects?.({ x, y, radius: 1, depth: 50 }) ?? [];
+      const items = picks
+        .filter((p: any) => p.object)
+        .map((p: any) => {
+          const ml = layersRef.current.find(l => l.id === (p.layer?.id ?? "").replace(/^layer-/, "").replace(/-v\d+$/, ""));
+          return ml ? { feature: p.object, layer: ml } : null;
+        })
+        .filter(Boolean) as SelectionItem[];
+      if (items.length === 0) return;
+      setSelectionItems(sortByDatetime(items));
+      setSelectionIdx(0);
+      if (!tablePanelOpenRef.current) {
+        const lngLat = mapRef.current?.getMap()?.unproject([x, y]);
+        if (lngLat) setPopupCoord([lngLat.lng, lngLat.lat]);
+      }
+    }
+
+    canvas.addEventListener("touchstart", onTouchStart, { passive: true });
+    canvas.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      canvas.removeEventListener("touchstart", onTouchStart);
+      canvas.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [mapLoaded, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── render ───────────────────────────────────────────────────────────────
   return (
     <>
@@ -2194,29 +2259,33 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
       >
       </Map>
 
-      {panelPos && selectionItems[selectionIdx] && (
+      {(isMobile || panelPos) && selectionItems[selectionIdx] && (
         <div
-          className="absolute z-20 bg-background border rounded-lg shadow-xl overflow-hidden text-foreground"
-          style={{ left: panelPos.x, top: panelPos.y, width: panelWidth }}
+          className={isMobile
+            ? "fixed z-50 inset-0 bg-background text-foreground flex flex-col"
+            : "absolute z-20 bg-background border rounded-lg shadow-xl overflow-hidden text-foreground"}
+          style={isMobile ? undefined : { left: panelPos!.x, top: panelPos!.y, width: panelWidth }}
         >
           <div
-            onMouseDown={startDrag}
-            className="flex items-center gap-1.5 px-3 py-2 border-b bg-muted/40 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={isMobile ? undefined : startDrag}
+            className={isMobile
+              ? "flex items-center gap-2 px-3 py-3 border-b bg-muted/40 select-none pt-[calc(env(safe-area-inset-top)+0.75rem)] shrink-0"
+              : "flex items-center gap-1.5 px-3 py-2 border-b bg-muted/40 select-none cursor-grab active:cursor-grabbing"}
           >
-            <GripHorizontal className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-            <span className="text-xs text-muted-foreground flex-1 truncate">
+            {!isMobile && <GripHorizontal className="h-3 w-3 text-muted-foreground/50 shrink-0" />}
+            <span className={isMobile ? "text-sm font-medium text-foreground flex-1 truncate" : "text-xs text-muted-foreground flex-1 truncate"}>
               {selectionItems[selectionIdx].layer.table.table_schema}.{selectionItems[selectionIdx].layer.table.table_name}
             </span>
             {selectionItems.length > 1 && (
               <span className="flex items-center gap-0.5 shrink-0">
                 <button onClick={() => setSelectionIdx(i => Math.max(0, i - 1))} disabled={selectionIdx === 0}
-                  className="p-0.5 rounded hover:bg-muted disabled:opacity-30 transition-colors">
-                  <ChevronLeft className="h-3 w-3" />
+                  className={isMobile ? "p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors" : "p-0.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"}>
+                  <ChevronLeft className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                 </button>
-                <span className="text-[11px] tabular-nums text-muted-foreground">{selectionIdx + 1}/{selectionItems.length}</span>
+                <span className={isMobile ? "text-xs tabular-nums text-muted-foreground" : "text-[11px] tabular-nums text-muted-foreground"}>{selectionIdx + 1}/{selectionItems.length}</span>
                 <button onClick={() => setSelectionIdx(i => Math.min(selectionItems.length - 1, i + 1))} disabled={selectionIdx === selectionItems.length - 1}
-                  className="p-0.5 rounded hover:bg-muted disabled:opacity-30 transition-colors">
-                  <ChevronRight className="h-3 w-3" />
+                  className={isMobile ? "p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors" : "p-0.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"}>
+                  <ChevronRight className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                 </button>
               </span>
             )}
@@ -2226,18 +2295,18 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
                   const item = selectionItems[selectionIdx];
                   onShowInTable(item.layer.id, item.feature.properties?._ctid as string ?? "");
                 }}
-                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                className={isMobile ? "p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0" : "p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"}
                 title="Open in attribute table"
               >
-                <Sheet className="h-3 w-3" />
+                <Sheet className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
               </button>
             )}
             <button onClick={() => { setPopupCoord(null); setSelectionItems([]); }}
-              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0">
-              <X className="h-3 w-3" />
+              className={isMobile ? "p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0" : "p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"}>
+              <X className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
             </button>
           </div>
-          <div className="overflow-y-auto" style={{ maxHeight: panelHeight }}>
+          <div className={isMobile ? "flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]" : "overflow-y-auto"} style={isMobile ? undefined : { maxHeight: panelHeight }}>
             <FeatureRows
               item={selectionItems[selectionIdx]}
               editMode={editMode}
@@ -2248,7 +2317,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
                     onManageTable(table_schema, table_name);
                   }
                 : undefined}
-              onEditGeometry={editMode
+              onEditGeometry={editMode && !isMobile
                 ? () => enterGeomEdit(selectionItems[selectionIdx])
                 : undefined}
               onDeleteFeature={editMode
@@ -2293,21 +2362,23 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
             />
           </div>
           {/* Resize handle — bottom-right corner */}
-          <div
-            onMouseDown={(e) => {
-              panelResizeRef.current = { ox: e.clientX, oy: e.clientY, startW: panelWidth, startH: panelHeight };
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-10 group"
-            title="Drag to resize"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors">
-              <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-              <circle cx="5" cy="8" r="1.2" fill="currentColor" />
-              <circle cx="8" cy="5" r="1.2" fill="currentColor" />
-            </svg>
-          </div>
+          {!isMobile && (
+            <div
+              onMouseDown={(e) => {
+                panelResizeRef.current = { ox: e.clientX, oy: e.clientY, startW: panelWidth, startH: panelHeight };
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-10 group"
+              title="Drag to resize"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0.5 right-0.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors">
+                <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+                <circle cx="5" cy="8" r="1.2" fill="currentColor" />
+                <circle cx="8" cy="5" r="1.2" fill="currentColor" />
+              </svg>
+            </div>
+          )}
         </div>
       )}
 
@@ -2479,7 +2550,7 @@ const MaplibreMapInner = React.forwardRef<MaplibreMapHandle, Props>(function Map
               >
                 <Globe className="h-3 w-3 md:h-3.5 md:w-3.5" />
               </button>
-              {editMode && layers.some(l => l.visible && l.table.geom_col) && !geomEditState && !addFeatureState && (
+              {editMode && !isMobile && layers.some(l => l.visible && l.table.geom_col) && !geomEditState && !addFeatureState && (
                 <div className="relative">
                   <button
                     title="Add feature"

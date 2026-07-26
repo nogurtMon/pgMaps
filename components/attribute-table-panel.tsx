@@ -7,6 +7,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import type { AttrOperator, AttrFilter, LayerControl, MapLayer, UndoableOp } from "@/lib/types";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const OPERATOR_LABELS: Record<AttrOperator, string> = {
   ilike: "contains", eq: "equals", neq: "not equals",
@@ -43,6 +44,7 @@ const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 700;
 
 export function AttributeTablePanel({ layers, activeLayerId, onLayerChange, onClose, connectionId, onFlyTo, onUpdateLayer, mapBounds, editMode, onEdit, onEditGeometry, onAddFeature, goToCtid, activateGoTo }: Props) {
+  const isMobile = useIsMobile();
   const activeLayer = layers.find(l => l.id === activeLayerId) ?? layers[0];
   const schema = activeLayer?.table.table_schema ?? "";
   const table  = activeLayer?.table.table_name  ?? "";
@@ -443,7 +445,7 @@ export function AttributeTablePanel({ layers, activeLayerId, onLayerChange, onCl
             <Button type="submit" size="sm" variant="ghost" className="h-6 w-6 p-0"><Search className="h-3 w-3" /></Button>
             {search && <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={clearSearch}><X className="h-3 w-3" /></Button>}
           </form>
-          {editMode && onAddFeature && activeGeomCol && (
+          {editMode && !isMobile && onAddFeature && activeGeomCol && (
             <Button size="sm" variant="ghost" className="h-6 text-xs gap-1 px-2" onClick={onAddFeature} title="Add feature">
               <Plus className="h-3 w-3" />Add feature
             </Button>
@@ -608,7 +610,7 @@ export function AttributeTablePanel({ layers, activeLayerId, onLayerChange, onCl
                           : col.isGeom ? (
                             <div className="flex items-center gap-1 min-w-0">
                               <span className="text-muted-foreground text-[10px] truncate">{String(val).slice(0, 40)}…</span>
-                              {editMode && onEditGeometry && (
+                              {editMode && !isMobile && onEditGeometry && (
                                 <button onClick={e => { e.stopPropagation(); onEditGeometry(row._ctid); }}
                                   className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Edit geometry">
                                   <Pencil className="h-3 w-3" />

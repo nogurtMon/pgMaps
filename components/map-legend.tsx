@@ -3,6 +3,7 @@ import React from "react";
 import type { MapLayer, LayerControl } from "@/lib/types";
 import { ChevronDown, Eye, EyeOff } from "lucide-react";
 import { findIcon, iconDataUri } from "@/lib/point-icons";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function geomKind(layer: MapLayer): "point" | "line" | "polygon" {
@@ -259,7 +260,7 @@ function LayerEntry({ layer, onToggleVisible, zoom }: {
   onToggleVisible?: (id: string) => void;
   zoom?: number;
 }) {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(false);
   const kind = geomKind(layer);
   const cat = activeCategorical(layer, kind);
   const thresh = activeThreshold(layer, kind);
@@ -356,12 +357,20 @@ interface MapLegendProps {
 }
 
 export function MapLegend({ layers, onToggleVisible, zoom }: MapLegendProps) {
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = React.useState(false);
+  const autoCollapsedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isMobile && !autoCollapsedRef.current) {
+      autoCollapsedRef.current = true;
+      setCollapsed(true);
+    }
+  }, [isMobile]);
   const visLayers = [...layers].reverse().filter(l => l.table.geom_col);
   if (visLayers.length === 0) return null;
 
   return (
-    <div className="absolute bottom-6 left-3 z-10 w-64 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg overflow-hidden">
+    <div className={`absolute z-10 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg overflow-hidden ${isMobile ? "bottom-3 inset-x-3" : "bottom-6 left-3 w-64 max-w-[calc(100vw-1.5rem)]"}`}>
       {/* Toggle header */}
       <button
         onClick={() => setCollapsed(c => !c)}
@@ -380,8 +389,8 @@ export function MapLegend({ layers, onToggleVisible, zoom }: MapLegendProps) {
       </button>
 
       {/* Layer list */}
-      <div className={`overflow-hidden transition-all duration-200 ease-in-out ${collapsed ? "max-h-0" : "max-h-[60dvh]"}`}>
-        <div className="overflow-y-auto px-3 pb-2.5 divide-y max-h-[60dvh]">
+      <div className={`overflow-hidden transition-all duration-200 ease-in-out ${collapsed ? "max-h-0" : isMobile ? "max-h-[40dvh]" : "max-h-[60dvh]"}`}>
+        <div className={`overflow-y-auto px-3 pb-2.5 divide-y ${isMobile ? "max-h-[40dvh]" : "max-h-[60dvh]"}`}>
           {visLayers.map(layer => (
             <div key={layer.id} className="pt-1.5 first:pt-0.5">
               <LayerEntry layer={layer} onToggleVisible={onToggleVisible} zoom={zoom} />
