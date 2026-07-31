@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { parseInList, serializeInList } from "@/lib/in-list";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -112,19 +113,19 @@ function InValuePicker({
       .catch(() => {});
   }, [connectionId, schema, table, column]);
 
-  const selected = React.useMemo(() => new Set(value.split(",").map((v) => v.trim()).filter(Boolean)), [value]);
+  const selected = React.useMemo(() => new Set(parseInList(value)), [value]);
 
   function toggle(v: string) {
     const next = new Set(selected);
     if (next.has(v)) next.delete(v); else next.add(v);
-    onChange([...next].join(","));
+    onChange(serializeInList([...next]));
   }
 
   if (truncated || distinctValues === null && !truncated) {
     return (
       <Input
         value={value}
-        placeholder={distinctValues === null ? "Loading…" : "comma-separated values"}
+        placeholder={distinctValues === null ? "Loading…" : "'a','b','c'"}
         onChange={(e) => onChange(e.target.value)}
         className="h-6 text-[11px] flex-1 min-w-0 max-w-30"
       />

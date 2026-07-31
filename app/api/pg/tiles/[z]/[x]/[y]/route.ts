@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { getPool } from "@/lib/pool";
 import { resolveDsnFromRequest, evictDsnCache } from "@/lib/resolve-dsn";
 import { getCachedTile, setCachedTile } from "@/lib/tile-cache";
+import { parseInList } from "@/lib/in-list";
 
 
 // Safe SQL identifier quoting
@@ -151,7 +152,7 @@ export async function GET(
           break;
         case "in": {
           if (!f.value?.trim()) break;
-          const vals = f.value.split(",").map((v) => v.trim()).filter(Boolean);
+          const vals = parseInList(f.value);
           if (vals.length === 0) break;
           const placeholders = vals.map((v) => { queryParams.push(v); return `$${queryParams.length}`; }).join(", ");
           filterClauses.push(`${col}::text IN (${placeholders})`);
@@ -159,7 +160,7 @@ export async function GET(
         }
         case "not_in": {
           if (!f.value?.trim()) break;
-          const vals = f.value.split(",").map((v) => v.trim()).filter(Boolean);
+          const vals = parseInList(f.value);
           if (vals.length === 0) break;
           const placeholders = vals.map((v) => { queryParams.push(v); return `$${queryParams.length}`; }).join(", ");
           filterClauses.push(`${col}::text NOT IN (${placeholders})`);

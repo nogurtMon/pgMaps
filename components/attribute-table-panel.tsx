@@ -490,7 +490,15 @@ export function AttributeTablePanel({ layers, activeLayerId, onLayerChange, onCl
       {showFilters && (
         <div className="shrink-0 border-b bg-muted/10 px-3 py-1.5 flex flex-wrap items-center gap-2">
           {attrFilters.map((f, i) => (
-            <div key={f.id} className="flex items-center gap-1.5 flex-wrap">
+            <div key={f.id} className={`flex items-center gap-1.5 flex-wrap transition-opacity ${f.enabled ? "" : "opacity-60"}`}>
+              <button
+                role="switch" aria-checked={f.enabled}
+                onClick={() => applyAttrFilter(attrFilters.map(fi => fi.id === f.id ? { ...fi, enabled: !fi.enabled } : fi))}
+                title={f.enabled ? "On — click to disable" : "Off — click to enable"}
+                className={`shrink-0 relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus-visible:outline-none ${f.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+              >
+                <span className={`inline-block h-3 w-3 rounded-full shadow transition-transform ${f.enabled ? "bg-white translate-x-3.5" : "bg-white translate-x-0.5"}`} />
+              </button>
               <button onClick={() => removeAttrFilter(f.id)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
               <span className="text-xs text-muted-foreground shrink-0">{i === 0 ? "where" : "and"}</span>
               <Select value={f.column} onValueChange={col => applyAttrFilter(attrFilters.map(fi => fi.id === f.id ? { ...fi, column: col, value: "" } : fi))}>
@@ -502,7 +510,7 @@ export function AttributeTablePanel({ layers, activeLayerId, onLayerChange, onCl
                 <SelectContent>{ALL_OPERATORS.map(op => <SelectItem key={op} value={op} className="text-xs">{OPERATOR_LABELS[op]}</SelectItem>)}</SelectContent>
               </Select>
               {!NULL_OPERATORS.includes(f.operator) && (
-                <Input value={f.value} placeholder={f.operator === "in" ? "a,b,c" : "value"}
+                <Input value={f.value} placeholder={f.operator === "in" || f.operator === "not_in" ? "'a','b','c'" : "value"}
                   onChange={e => setAttrFilters(prev => prev.map(fi => fi.id === f.id ? { ...fi, value: e.target.value } : fi))}
                   onBlur={e => applyAttrFilter(attrFilters.map(fi => fi.id === f.id ? { ...fi, value: e.target.value } : fi))}
                   onKeyDown={e => { if (e.key === "Enter") applyAttrFilter(attrFilters.map(fi => fi.id === f.id ? { ...fi, value: (e.target as HTMLInputElement).value } : fi)); }}

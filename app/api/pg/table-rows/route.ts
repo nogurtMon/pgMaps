@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/pool";
 import { resolveDsnFromRequest } from "@/lib/resolve-dsn";
+import { parseInList } from "@/lib/in-list";
 
 function ident(...parts: string[]) {
   return parts.map((p) => `"${p.replace(/"/g, '""')}"`).join(".");
@@ -107,7 +108,8 @@ export async function POST(req: NextRequest) {
 
     const SAFE_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
     const validColumnNames = new Set(columns.map((c) => c.name));
-    for (const f of attrFilters as { column: string; operator: string; value: string }[]) {
+    for (const f of attrFilters as { column: string; operator: string; value: string; enabled?: boolean }[]) {
+      if (f.enabled === false) continue;
       if (!f.column || !validColumnNames.has(f.column) || !VALID_IDENT.test(f.column)) continue;
       const col = ident(f.column);
       switch (f.operator) {
@@ -147,7 +149,7 @@ export async function POST(req: NextRequest) {
           break;
         case "in": {
           if (f.value == null || f.value === "") break;
-          const vals = f.value.split(",").map((v: string) => v.trim()).filter(Boolean);
+          const vals = parseInList(f.value);
           if (vals.length === 0) break;
           const placeholders = vals.map((v: string) => { params.push(v); return `$${params.length}`; }).join(", ");
           whereClauses.push(`${col}::text IN (${placeholders})`);
